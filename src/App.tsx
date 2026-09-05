@@ -206,7 +206,7 @@ function App() {
   const [error, setError] = useState("");
   const playStore = import.meta.env.VITE_PLAY_STORE_URL as string | undefined;
   const appStore = import.meta.env.VITE_APP_STORE_URL as string | undefined;
-  const apk = `${import.meta.env.BASE_URL}mbokamaket.apk`;
+  const apk = import.meta.env.VITE_APK_URL as string | undefined;
   const contactEmail = import.meta.env.VITE_CONTACT_EMAIL as string | undefined;
   const facebookUrl = import.meta.env.VITE_FACEBOOK_URL as string | undefined;
   const tiktokUrl = import.meta.env.VITE_TIKTOK_URL as string | undefined;
@@ -1040,7 +1040,7 @@ function App() {
               icon={ApkLogo}
               title="APK Android"
               subtitle="Installation directe"
-              href={apk}
+              href={apk?.replace(/[?&]dl=0(?:&|$)/, (match) => match.startsWith("?") ? "?dl=1" : "&dl=1")}
               download
             />
           </div>
@@ -1127,7 +1127,7 @@ function DownloadCard({
           type={download ? "application/vnd.android.package-archive" : undefined}
           className="btn btn-sm rounded-lg bg-[#143ca8] text-white"
         >
-          Ouvrir
+          {download ? "Télécharger" : "Ouvrir"}
         </a>
       ) : (
         <span className="text-xs text-slate-400">Bientôt</span>
