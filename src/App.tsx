@@ -97,6 +97,7 @@ type Row = {
 
 const PRODUCT_IMAGES_BUCKET = "product-images";
 const DEFAULT_APK_URL = "https://www.dropbox.com/scl/fi/5zdwh2zrttr476fkc50it/MbokaMarket-v1.0.0.apk.apk?rlkey=6t6ead4jxe465hfcy87plwx9s&st=hds9drrx&dl=1";
+const DEFAULT_CONTACT_EMAIL = "contact@mobokamaket.com";
 
 const categories: Category[] = [
   { id: "3", label: "Immobilier", icon: Home },
@@ -208,7 +209,7 @@ function App() {
   const playStore = import.meta.env.VITE_PLAY_STORE_URL as string | undefined;
   const appStore = import.meta.env.VITE_APP_STORE_URL as string | undefined;
   const apk = (import.meta.env.VITE_APK_URL as string | undefined) || DEFAULT_APK_URL;
-  const contactEmail = import.meta.env.VITE_CONTACT_EMAIL as string | undefined;
+  const contactEmail = (import.meta.env.VITE_CONTACT_EMAIL as string | undefined) || DEFAULT_CONTACT_EMAIL;
   const facebookUrl = import.meta.env.VITE_FACEBOOK_URL as string | undefined;
   const tiktokUrl = import.meta.env.VITE_TIKTOK_URL as string | undefined;
   const instagramUrl = import.meta.env.VITE_INSTAGRAM_URL as string | undefined;
@@ -1188,7 +1189,7 @@ function Footer({
           </div>
         </div>
         <div><h2 className="font-bold">Navigation</h2><div className="mt-3 grid gap-1 text-sm text-blue-100"><a href="#accueil" className="flex min-h-10 items-center hover:text-white">Accueil</a><a href="#produits" onClick={(event) => { event.preventDefault(); onOpenProducts(); }} className="flex min-h-10 items-center hover:text-white">Produits</a><a href="#telechargement" className="flex min-h-10 items-center hover:text-white">Télécharger l’application</a></div></div>
-        <div><h2 className="font-bold">Nous contacter</h2><form className="mt-4 grid gap-3" action={contactEmail ? `mailto:${contactEmail}` : undefined} method="post" encType="text/plain"><input required name="name" placeholder="Votre nom" className="input w-full border-white/20 bg-white/10 text-white placeholder:text-blue-200" /><input required type="email" name="email" placeholder="Votre email" className="input w-full border-white/20 bg-white/10 text-white placeholder:text-blue-200" /><textarea required name="message" placeholder="Votre message" className="textarea min-h-24 w-full border-white/20 bg-white/10 text-white placeholder:text-blue-200" /><button type="submit" disabled={!contactEmail} className="btn w-full border-0 bg-white text-[#102a68] hover:bg-blue-50 disabled:opacity-50">Envoyer le message</button></form></div>
+        <div><h2 className="font-bold">Nous contacter</h2><form className="mt-4 grid gap-3" action={`mailto:${contactEmail}`} method="post" encType="text/plain"><input required name="name" placeholder="Votre nom" className="input w-full border-white/20 bg-white/10 text-white placeholder:text-blue-200" /><input required type="email" name="email" placeholder="Votre email" className="input w-full border-white/20 bg-white/10 text-white placeholder:text-blue-200" /><textarea required name="message" placeholder="Votre message" className="textarea min-h-24 w-full border-white/20 bg-white/10 text-white placeholder:text-blue-200" /><button type="submit" className="btn w-full border-0 bg-white text-[#102a68] hover:bg-blue-50">Envoyer le message</button></form></div>
       </div>
       <div className="border-t border-white/15 px-4 py-5 text-center text-xs text-blue-200">© {new Date().getFullYear()} MbokaMarket. Tous droits réservés.</div>
     </footer>
