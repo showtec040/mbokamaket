@@ -1121,9 +1121,9 @@ function DownloadCard({
       {href ? (
         <a
           href={href}
-          target={download ? undefined : "_blank"}
+          target={download ? "_self" : "_blank"}
           rel={download ? undefined : "noopener noreferrer"}
-          download={download ? true : undefined}
+          download={download ? "MbokaMarket-v1.0.0.apk" : undefined}
           type={download ? "application/vnd.android.package-archive" : undefined}
           className="btn btn-sm rounded-lg bg-[#143ca8] text-white"
         >
