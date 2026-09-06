@@ -312,7 +312,6 @@ function App() {
     localStorage.setItem("mbokamarket-favorites", JSON.stringify(favoriteIds));
   }, [favoriteIds]);
   useEffect(() => {
-    if (cookieConsent !== "accepted") return;
     const client = supabase;
     if (!client) return;
     const registerVisit = async () => {
@@ -330,7 +329,7 @@ function App() {
       }
     };
     void registerVisit();
-  }, [cookieConsent]);
+  }, []);
   useEffect(() => {
     const isStandalone = window.matchMedia("(display-mode: standalone)").matches
       || Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
