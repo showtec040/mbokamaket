@@ -276,6 +276,7 @@ function App() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [heroProductIndex, setHeroProductIndex] = useState(0);
   const [heroPaused, setHeroPaused] = useState(false);
+  const [isMobileViewport, setIsMobileViewport] = useState(() => window.matchMedia("(max-width: 639px)").matches);
   const [sellerFilter, setSellerFilter] = useState<{ id: string; name: string } | null>(null);
   const [favoriteIds, setFavoriteIds] = useState<string[]>(() => {
     try {
@@ -530,12 +531,19 @@ function App() {
   );
   const heroProduct = advertisedProducts[heroProductIndex % Math.max(advertisedProducts.length, 1)];
   useEffect(() => {
-    if (advertisedProducts.length < 2 || heroPaused) return;
+    const mediaQuery = window.matchMedia("(max-width: 639px)");
+    const updateViewport = () => setIsMobileViewport(mediaQuery.matches);
+    updateViewport();
+    mediaQuery.addEventListener("change", updateViewport);
+    return () => mediaQuery.removeEventListener("change", updateViewport);
+  }, []);
+  useEffect(() => {
+    if (!isMobileViewport || advertisedProducts.length < 2 || heroPaused) return;
     const timer = window.setInterval(() => {
       setHeroProductIndex((current) => (current + 1) % advertisedProducts.length);
     }, 5000);
     return () => window.clearInterval(timer);
-  }, [advertisedProducts.length, heroPaused]);
+  }, [advertisedProducts.length, heroPaused, isMobileViewport]);
   const openProducts = () => {
     setSellerFilter(null);
     setPublishOpen(false);
@@ -883,12 +891,12 @@ function App() {
                       </div>
                     </div>
                   </button>
-                  <div className="mt-4 flex items-center justify-between">
+                  {isMobileViewport && <div className="mt-4 flex items-center justify-between">
                     <div className="flex gap-1.5" aria-label="Position dans les annonces">
                       {advertisedProducts.map((item, index) => <button key={item.id} type="button" onClick={() => setHeroProductIndex(index)} aria-label={`Afficher ${item.title}`} className={`h-2 rounded-full transition-all ${index === heroProductIndex % advertisedProducts.length ? "w-7 bg-[#143ca8]" : "w-2 bg-slate-300"}`} />)}
                     </div>
                     {advertisedProducts.length > 1 && <div className="flex gap-2"><button type="button" onClick={() => setHeroProductIndex((heroProductIndex - 1 + advertisedProducts.length) % advertisedProducts.length)} className="btn btn-circle btn-sm bg-white" aria-label="Annonce précédente"><ChevronLeft size={16} /></button><button type="button" onClick={() => setHeroProductIndex((heroProductIndex + 1) % advertisedProducts.length)} className="btn btn-circle btn-sm bg-white" aria-label="Annonce suivante"><ChevronRight size={16} /></button></div>}
-                  </div>
+                  </div>}
                 </>
               ) : <div className="grid flex-1 place-items-center text-center text-slate-500"><div><Search className="mx-auto mb-3 text-slate-300" size={32} /><p>Les annonces publicitaires apparaîtront ici.</p></div></div>}
           </div>
