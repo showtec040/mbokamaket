@@ -27,7 +27,7 @@ import {
   UserRound,
   X,
 } from "lucide-react";
-import { FaFacebookF, FaInstagram, FaTiktok, FaYoutube } from "react-icons/fa6";
+import { FaFacebookF, FaGoogle, FaInstagram, FaTiktok, FaYoutube } from "react-icons/fa6";
 import { supabase, supabaseConfigured } from "./lib/supabase";
 import appIcon from "./assets/icon.png";
 import appProducts from "./assets/picture (2).jpg";
@@ -202,6 +202,7 @@ function App() {
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [installOpen, setInstallOpen] = useState(false);
   const [visitorCount, setVisitorCount] = useState<number | null>(null);
+  const [legalPage, setLegalPage] = useState<"conditions" | "confidentialite" | null>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
   const mobileSearchRef = useRef<HTMLLabelElement>(null);
   const [loading, setLoading] = useState(Boolean(supabase));
@@ -482,6 +483,7 @@ function App() {
       setNoticeOpen(hash === "#notifications");
       setPublishOpen(hash === "#publier");
       setAuthOpen(hash === "#connexion" || hash === "#inscription");
+      setLegalPage(hash === "#conditions" ? "conditions" : hash === "#confidentialite" ? "confidentialite" : null);
       if (["#accueil", "#produits", "#notifications", "#telechargement"].includes(hash)) {
         setSelectedProduct(null);
       }
@@ -1074,8 +1076,10 @@ function App() {
         instagramUrl={instagramUrl}
         youtubeUrl={youtubeUrl}
         visitorCount={visitorCount}
+        onOpenLegal={(page) => { setLegalPage(page); window.location.hash = page; }}
         onOpenProducts={openProducts}
       />
+      {legalPage && <LegalPage page={legalPage} onClose={goHome} />}
       {profileOpen && user && (
         <ProfilePanel
           user={user}
@@ -1184,6 +1188,7 @@ function Footer({
   instagramUrl,
   youtubeUrl,
   visitorCount,
+  onOpenLegal,
   onOpenProducts,
 }: {
   contactEmail?: string;
@@ -1192,6 +1197,7 @@ function Footer({
   instagramUrl?: string;
   youtubeUrl?: string;
   visitorCount: number | null;
+  onOpenLegal: (page: "conditions" | "confidentialite") => void;
   onOpenProducts: () => void;
 }) {
   return (
@@ -1211,11 +1217,58 @@ function Footer({
             </div>
           </div>
         </div>
-        <div><h2 className="font-bold">Navigation</h2><div className="mt-3 grid gap-1 text-sm text-blue-100"><a href="#accueil" className="flex min-h-10 items-center hover:text-white">Accueil</a><a href="#produits" onClick={(event) => { event.preventDefault(); onOpenProducts(); }} className="flex min-h-10 items-center hover:text-white">Produits</a><a href="#telechargement" className="flex min-h-10 items-center hover:text-white">Télécharger l’application</a></div></div>
+        <div><h2 className="font-bold">Navigation</h2><div className="mt-3 grid gap-1 text-sm text-blue-100"><a href="#accueil" className="flex min-h-10 items-center hover:text-white">Accueil</a><a href="#produits" onClick={(event) => { event.preventDefault(); onOpenProducts(); }} className="flex min-h-10 items-center hover:text-white">Produits</a><a href="#telechargement" className="flex min-h-10 items-center hover:text-white">Télécharger l’application</a><button type="button" onClick={() => onOpenLegal("conditions")} className="flex min-h-10 items-center text-left hover:text-white">Conditions d’utilisation</button><button type="button" onClick={() => onOpenLegal("confidentialite")} className="flex min-h-10 items-center text-left hover:text-white">Politique de confidentialité</button></div></div>
         <div><h2 className="font-bold">Nous contacter</h2><form className="mt-4 grid gap-3" action={contactEmail ? `mailto:${contactEmail}` : undefined} method="post" encType="text/plain"><input required name="name" placeholder="Votre nom" className="input w-full border-white/20 bg-white/10 text-white placeholder:text-blue-200" /><input required type="email" name="email" placeholder="Votre email" className="input w-full border-white/20 bg-white/10 text-white placeholder:text-blue-200" /><textarea required name="message" placeholder="Votre message" className="textarea min-h-24 w-full border-white/20 bg-white/10 text-white placeholder:text-blue-200" /><button type="submit" disabled={!contactEmail} className="btn w-full border-0 bg-white text-[#102a68] hover:bg-blue-50 disabled:opacity-50">Envoyer le message</button></form></div>
       </div>
       <div className="border-t border-white/15 px-4 py-5 text-center text-xs text-blue-200">© {new Date().getFullYear()} MbokaMarket. Tous droits réservés.</div>
     </footer>
+  );
+}
+
+function LegalPage({ page, onClose }: { page: "conditions" | "confidentialite"; onClose: () => void }) {
+  const isTerms = page === "conditions";
+  return (
+    <div className="fixed inset-0 z-[80] overflow-y-auto bg-[#f6f8fc]">
+      <div className="mx-auto min-h-full max-w-4xl px-4 py-6 sm:px-6 sm:py-10">
+        <div className="flex items-center justify-between gap-4">
+          <a href="#accueil" onClick={onClose} className="flex items-center gap-2 text-[#143ca8]">
+            <span className="grid size-10 place-items-center rounded-xl bg-[#143ca8] text-lg font-black text-white">M</span>
+            <strong className="font-display text-lg">MbokaMarket</strong>
+          </a>
+          <button type="button" onClick={onClose} className="btn btn-ghost rounded-xl">Retour à l’accueil</button>
+        </div>
+        <article className="mt-8 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8">
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#143ca8]">MbokaMarket</p>
+          <h1 className="mt-2 font-display text-3xl font-bold text-slate-900">{isTerms ? "Conditions d’utilisation" : "Politique de confidentialité"}</h1>
+          <p className="mt-2 text-sm text-slate-500">Dernière mise à jour : 6 septembre 2026</p>
+          {isTerms ? <TermsContent /> : <PrivacyContent />}
+        </article>
+      </div>
+    </div>
+  );
+}
+
+function TermsContent() {
+  return (
+    <div className="mt-8 space-y-6 leading-7 text-slate-600">
+      <section><h2 className="text-xl font-bold text-slate-900">1. Objet du service</h2><p>MbokaMarket est une plateforme qui permet aux utilisateurs de publier, découvrir et contacter des vendeurs pour des produits et services proposés localement.</p></section>
+      <section><h2 className="text-xl font-bold text-slate-900">2. Utilisation de la plateforme</h2><p>L’utilisateur s’engage à fournir des informations exactes, à respecter les lois applicables et à ne pas publier de contenu frauduleux, illégal, trompeur ou portant atteinte aux droits d’autrui.</p></section>
+      <section><h2 className="text-xl font-bold text-slate-900">3. Annonces et transactions</h2><p>Les vendeurs sont responsables de leurs annonces, de leurs produits et de leurs échanges avec les acheteurs. MbokaMarket n’est pas partie aux transactions et recommande de vérifier le produit et le vendeur avant tout paiement.</p></section>
+      <section><h2 className="text-xl font-bold text-slate-900">4. Compte utilisateur</h2><p>L’utilisateur doit protéger ses identifiants et signaler toute utilisation non autorisée de son compte. MbokaMarket peut suspendre une annonce ou un compte en cas de non-respect des présentes conditions.</p></section>
+      <section><h2 className="text-xl font-bold text-slate-900">5. Contact</h2><p>Pour toute question, écrivez à <a className="font-semibold text-[#143ca8]" href="mailto:contact@mbokamaket.com">contact@mbokamaket.com</a>.</p></section>
+    </div>
+  );
+}
+
+function PrivacyContent() {
+  return (
+    <div className="mt-8 space-y-6 leading-7 text-slate-600">
+      <section><h2 className="text-xl font-bold text-slate-900">1. Données collectées</h2><p>Nous pouvons collecter les informations nécessaires à la création du compte, aux annonces, aux favoris, aux notifications et aux échanges avec les utilisateurs.</p></section>
+      <section><h2 className="text-xl font-bold text-slate-900">2. Utilisation des données</h2><p>Ces données servent à fournir les fonctionnalités de MbokaMarket, sécuriser les comptes, afficher les annonces et améliorer le service. Nous ne vendons pas les données personnelles des utilisateurs.</p></section>
+      <section><h2 className="text-xl font-bold text-slate-900">3. Supabase et stockage</h2><p>Les données applicatives sont hébergées via Supabase. Les utilisateurs doivent éviter de partager des informations sensibles dans une annonce ou un message public.</p></section>
+      <section><h2 className="text-xl font-bold text-slate-900">4. Conservation et droits</h2><p>Nous conservons les données pendant la durée nécessaire au fonctionnement du service. Vous pouvez demander l’accès, la correction ou la suppression de vos données en écrivant à notre adresse de contact.</p></section>
+      <section><h2 className="text-xl font-bold text-slate-900">5. Contact</h2><p>Pour toute demande concernant vos données personnelles, écrivez à <a className="font-semibold text-[#143ca8]" href="mailto:contact@mbokamaket.com">contact@mbokamaket.com</a>.</p></section>
+    </div>
   );
 }
 
@@ -1259,6 +1312,21 @@ function AuthModal({ initialMode, onClose }: { initialMode: "login" | "signup"; 
     if (authError) setError(authError.message);
     else onClose();
   };
+  const signInWithProvider = async (provider: "google" | "facebook") => {
+    if (!supabase) {
+      setError("La configuration Supabase est absente.");
+      return;
+    }
+    setBusy(true);
+    const { error: authError } = await supabase.auth.signInWithOAuth({
+      provider,
+      options: { redirectTo: `${window.location.origin}${window.location.pathname}#accueil` },
+    });
+    if (authError) {
+      setBusy(false);
+      setError(authError.message);
+    }
+  };
   return (
     <Modal>
       <form
@@ -1275,6 +1343,15 @@ function AuthModal({ initialMode, onClose }: { initialMode: "login" | "signup"; 
             <X size={18} />
           </button>
         </div>
+        {mode === "login" && <div className="mt-5 grid gap-2 sm:grid-cols-2">
+          <button type="button" disabled={busy} onClick={() => void signInWithProvider("google")} className="btn btn-outline w-full gap-2">
+            <FaGoogle size={16} className="text-red-500" /> Google
+          </button>
+          <button type="button" disabled={busy} onClick={() => void signInWithProvider("facebook")} className="btn w-full gap-2 bg-[#1877f2] text-white hover:bg-[#166fe5]">
+            <FaFacebookF size={16} /> Facebook
+          </button>
+        </div>}
+        {mode === "login" && <div className="divider my-3 text-xs text-slate-400">ou avec votre e-mail</div>}
         {mode === "signup" && <>
           <input required value={name} onChange={(event) => setName(event.target.value)} placeholder="Nom complet" className="input input-bordered mt-2 w-full" />
           <input required value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="Numéro de téléphone" className="input input-bordered mt-3 w-full" />
