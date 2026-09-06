@@ -1270,7 +1270,7 @@ function PrivacyContent() {
 }
 
 function AuthModal({ initialMode, onClose }: { initialMode: "login" | "signup"; onClose: () => void }) {
-  const [mode, setMode] = useState<"login" | "signup">(initialMode);
+  const [mode, setMode] = useState<"login" | "signup" | "reset">(initialMode);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -1284,18 +1284,33 @@ function AuthModal({ initialMode, onClose }: { initialMode: "login" | "signup"; 
   const [referralCode, setReferralCode] = useState("");
   const [acceptedPrivacy, setAcceptedPrivacy] = useState(false);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     const syncMode = () => {
       setMode(window.location.hash === "#inscription" ? "signup" : "login");
       setError("");
+      setSuccess("");
     };
     window.addEventListener("hashchange", syncMode);
     return () => window.removeEventListener("hashchange", syncMode);
   }, []);
   const submit = async (event: FormEvent) => {
     event.preventDefault();
+    if (!supabase) {
+      setError("La configuration Supabase est absente.");
+      return;
+    }
     setBusy(true);
+    if (mode === "reset") {
+      const { error: authError } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}${window.location.pathname}#connexion`,
+      });
+      setBusy(false);
+      if (authError) setError(authError.message);
+      else setSuccess("Si cette adresse correspond à un compte, vous recevrez un e-mail pour réinitialiser votre mot de passe.");
+      return;
+    }
     if (mode === "signup" && !/^\d{8,15}$/.test(phone.replace(/\D/g, ""))) { setError("Le numéro de téléphone n’est pas valide."); setBusy(false); return; }
     if (mode === "signup" && password.length < 8) { setError("Le mot de passe doit contenir au moins 8 caractères."); setBusy(false); return; }
     if (mode === "signup" && role === "seller" && (accountType === "boutique" || accountType === "magasin") && !businessName.trim()) { setError("Veuillez renseigner le nom de votre boutique ou magasin."); setBusy(false); return; }
@@ -1331,7 +1346,7 @@ function AuthModal({ initialMode, onClose }: { initialMode: "login" | "signup"; 
         className="w-full max-w-md rounded-3xl bg-white p-6"
       >
         <div className="flex items-center justify-between">
-          <h2 className="font-display text-2xl font-bold">{mode === "login" ? "Se connecter" : "Créer un compte"}</h2>
+          <h2 className="font-display text-2xl font-bold">{mode === "login" ? "Se connecter" : mode === "reset" ? "Réinitialiser le mot de passe" : "Créer un compte"}</h2>
           <button
             type="button"
             onClick={onClose}
@@ -1349,6 +1364,7 @@ function AuthModal({ initialMode, onClose }: { initialMode: "login" | "signup"; 
           </button>
         </div>}
         {mode === "login" && <div className="divider my-3 text-xs text-slate-400">ou avec votre e-mail</div>}
+        {mode === "reset" && <p className="mt-4 text-sm leading-6 text-slate-500">Saisissez votre adresse e-mail et nous vous enverrons un lien sécurisé.</p>}
         {mode === "signup" && <>
           <input required value={name} onChange={(event) => setName(event.target.value)} placeholder="Nom complet" className="input input-bordered mt-2 w-full" />
           <input required value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="Numéro de téléphone" className="input input-bordered mt-3 w-full" />
@@ -1364,7 +1380,7 @@ function AuthModal({ initialMode, onClose }: { initialMode: "login" | "signup"; 
           placeholder="Email"
           className="input input-bordered mt-2 w-full"
         />
-        <div className="relative mt-3">
+        {mode !== "reset" && <div className="relative mt-3">
           <input
             required
             type={showPassword ? "text" : "password"}
@@ -1381,7 +1397,7 @@ function AuthModal({ initialMode, onClose }: { initialMode: "login" | "signup"; 
           >
             {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
           </button>
-        </div>
+        </div>}
         {mode === "signup" && <>
           <div className="relative mt-3">
             <input required minLength={8} type={showConfirmPassword ? "text" : "password"} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Confirmer le mot de passe" className="input input-bordered w-full pr-12" />
@@ -1397,16 +1413,20 @@ function AuthModal({ initialMode, onClose }: { initialMode: "login" | "signup"; 
           <label className="mt-4 flex items-start gap-2 text-xs text-slate-600"><input required type="checkbox" checked={acceptedPrivacy} onChange={(event) => setAcceptedPrivacy(event.target.checked)} className="checkbox checkbox-sm" /> J’accepte la Politique de confidentialité.</label>
         </>}
         {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+        {success && <p className="mt-3 text-sm text-green-700">{success}</p>}
         <button disabled={busy} className="btn btn-primary mt-5 w-full">
           {busy ? (
             <LoaderCircle className="animate-spin" size={17} />
           ) : (
-            mode === "login" ? "Se connecter" : "Créer mon compte"
+            mode === "login" ? "Se connecter" : mode === "reset" ? "Envoyer le lien" : "Créer mon compte"
           )}
         </button>
-        <button type="button" onClick={() => { const nextMode = mode === "login" ? "signup" : "login"; setMode(nextMode); setError(""); window.location.hash = nextMode === "login" ? "connexion" : "inscription"; }} className="mt-4 w-full text-sm font-semibold text-[#143ca8]">
-          {mode === "login" ? "Créer un compte" : "J’ai déjà un compte"}
-        </button>
+        {mode === "login" && <>
+          <button type="button" onClick={() => { setMode("reset"); setError(""); setSuccess(""); }} className="mt-4 w-full text-sm font-semibold text-[#143ca8]">Mot de passe oublié ?</button>
+          <button type="button" onClick={() => { setMode("signup"); setError(""); setSuccess(""); window.location.hash = "inscription"; }} className="mt-3 w-full text-sm font-semibold text-[#143ca8]">Créer un compte</button>
+        </>}
+        {mode === "reset" && <button type="button" onClick={() => { setMode("login"); setError(""); setSuccess(""); }} className="mt-4 w-full text-sm font-semibold text-[#143ca8]">Retour à la connexion</button>}
+        {mode === "signup" && <button type="button" onClick={() => { setMode("login"); setError(""); setSuccess(""); window.location.hash = "connexion"; }} className="mt-4 w-full text-sm font-semibold text-[#143ca8]">J’ai déjà un compte</button>}
       </form>
     </Modal>
   );
