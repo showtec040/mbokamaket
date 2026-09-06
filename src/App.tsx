@@ -31,6 +31,7 @@ import {
 import { FaFacebookF, FaGoogle, FaInstagram, FaTiktok, FaYoutube } from "react-icons/fa6";
 import { supabase, supabaseConfigured } from "./lib/supabase";
 import appIcon from "./assets/icon.png";
+import kambexaLogo from "./assets/kambexa.png";
 
 function PasswordResetPage({ onClose, onLogin }: { onClose: () => void; onLogin: () => void }) {
   const [password, setPassword] = useState("");
@@ -408,7 +409,7 @@ function App() {
           id: String(item.id),
           title: item.title || "Notification",
           message: item.message || "",
-          read: Boolean(item.read),
+          read: item.read === true,
           createdAt: item.created_at,
         })),
       );
@@ -509,7 +510,7 @@ function App() {
       }) : [],
     [products, query, category, sellerFilter, showProducts],
   );
-  const unreadNoticeCount = notices.filter((item) => !item.read).length;
+  const unreadNoticeCount = notices.filter((item) => item.read === false).length;
   const openNotice = async (notice: Notice) => {
     setSelectedNotice({ ...notice, read: true });
     setNotices((current) => current.map((item) => item.id === notice.id ? { ...item, read: true } : item));
@@ -1348,7 +1349,14 @@ function Footer({
         <div><h2 className="font-bold">Navigation</h2><div className="mt-3 grid gap-1 text-sm text-blue-100"><a href="#accueil" className="flex min-h-10 items-center hover:text-white">Accueil</a><a href="#produits" onClick={(event) => { event.preventDefault(); onOpenProducts(); }} className="flex min-h-10 items-center hover:text-white">Produits</a><a href="#telechargement" className="flex min-h-10 items-center hover:text-white">Télécharger l’application</a><a href="/terms.html" className="flex min-h-10 items-center hover:text-white">Conditions d’utilisation</a><a href="/privacy-policy.html" className="flex min-h-10 items-center hover:text-white">Politique de confidentialité</a><button type="button" onClick={onManageCookies} className="flex min-h-10 items-center text-left hover:text-white">Gérer les cookies</button></div></div>
         <div><h2 className="font-bold">Nous contacter</h2><form className="mt-4 grid gap-3" action={contactEmail ? `mailto:${contactEmail}` : undefined} method="post" encType="text/plain"><input required name="name" placeholder="Votre nom" className="input w-full border-white/20 bg-white/10 text-white placeholder:text-blue-200" /><input required type="email" name="email" placeholder="Votre email" className="input w-full border-white/20 bg-white/10 text-white placeholder:text-blue-200" /><textarea required name="message" placeholder="Votre message" className="textarea min-h-24 w-full border-white/20 bg-white/10 text-white placeholder:text-blue-200" /><button type="submit" disabled={!contactEmail} className="btn w-full border-0 bg-white text-[#102a68] hover:bg-blue-50 disabled:opacity-50">Envoyer le message</button></form></div>
       </div>
-      <div className="border-t border-white/15 px-4 py-5 text-center text-xs text-blue-200">© {new Date().getFullYear()} MbokaMarket. Tous droits réservés.</div>
+      <div className="flex flex-col items-center justify-center gap-3 border-t border-white/15 px-4 py-5 text-center text-xs text-blue-200 sm:flex-row">
+        <span>© {new Date().getFullYear()} MbokaMarket. Tous droits réservés.</span>
+        <span className="hidden text-blue-300 sm:inline" aria-hidden="true">|</span>
+        <span className="inline-flex items-center gap-2">
+          Propriété de Kambexa
+          <img src={kambexaLogo} alt="Logo Kambexa" loading="lazy" decoding="async" className="size-7 object-contain" />
+        </span>
+      </div>
     </footer>
   );
 }
