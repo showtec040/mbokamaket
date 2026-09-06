@@ -1845,6 +1845,8 @@ function ProfileManagementPage({
   const [success, setSuccess] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [requiresCurrentPassword, setRequiresCurrentPassword] = useState(true);
   const [passwordBusy, setPasswordBusy] = useState(false);
   const [passwordError, setPasswordError] = useState("");
   const [passwordSuccess, setPasswordSuccess] = useState("");
@@ -1875,6 +1877,11 @@ function ProfileManagementPage({
           avatar: data.avatar || "",
           showPhone: Boolean(data.show_phone),
         }));
+      }
+      const { data: authData } = await supabase.auth.getUser();
+      if (authData.user) {
+        const isSocialAccount = authData.user.identities?.some((identity) => identity.provider === "google" || identity.provider === "facebook") ?? false;
+        setRequiresCurrentPassword(!isSocialAccount || authData.user.user_metadata?.password_configured === true);
       }
       setBusy(false);
     };
@@ -1954,8 +1961,28 @@ function ProfileManagementPage({
       setPasswordError("Les mots de passe ne correspondent pas.");
       return;
     }
+    if (requiresCurrentPassword && !currentPassword) {
+      setPasswordError("Saisissez votre ancien mot de passe.");
+      return;
+    }
     setPasswordBusy(true);
-    const { error: passwordUpdateError } = await supabase.auth.updateUser({ password: newPassword });
+    if (requiresCurrentPassword) {
+      if (!user.email) {
+        setPasswordBusy(false);
+        setPasswordError("Impossible de vérifier votre ancien mot de passe sans adresse email.");
+        return;
+      }
+      const { error: verifyError } = await supabase.auth.signInWithPassword({ email: user.email, password: currentPassword });
+      if (verifyError) {
+        setPasswordBusy(false);
+        setPasswordError("L’ancien mot de passe est incorrect.");
+        return;
+      }
+    }
+    const { error: passwordUpdateError } = await supabase.auth.updateUser({
+      password: newPassword,
+      data: { password_configured: true },
+    });
     setPasswordBusy(false);
     if (passwordUpdateError) {
       setPasswordError(passwordUpdateError.message);
@@ -1963,6 +1990,8 @@ function ProfileManagementPage({
     }
     setNewPassword("");
     setConfirmNewPassword("");
+    setCurrentPassword("");
+    setRequiresCurrentPassword(true);
     setPasswordSuccess("Votre mot de passe a été modifié.");
   };
 
@@ -2002,6 +2031,7 @@ function ProfileManagementPage({
           <p className="mt-1 text-sm text-slate-500">Choisissez un nouveau mot de passe sécurisé pour votre compte.</p>
         </div>
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          {requiresCurrentPassword && <input required type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} placeholder="Ancien mot de passe" className="input input-bordered w-full sm:col-span-2" />}
           <input required minLength={8} type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} placeholder="Nouveau mot de passe" className="input input-bordered w-full" />
           <input required minLength={8} type="password" value={confirmNewPassword} onChange={(event) => setConfirmNewPassword(event.target.value)} placeholder="Confirmer le nouveau mot de passe" className="input input-bordered w-full" />
         </div>
