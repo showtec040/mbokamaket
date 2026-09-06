@@ -6,7 +6,6 @@ import {
   CarFront,
   ChevronLeft,
   ChevronRight,
-  Cookie,
   Download,
   Eye,
   EyeOff,
@@ -178,16 +177,6 @@ type Row = {
 
 const PRODUCT_IMAGES_BUCKET = "product-images";
 const DEFAULT_APK_URL = "https://www.dropbox.com/scl/fi/5zdwh2zrttr476fkc50it/MbokaMarket-v1.0.0.apk.apk?rlkey=6t6ead4jxe465hfcy87plwx9s&st=hds9drrx&dl=1";
-const COOKIE_CONSENT_NAME = "mbokamarket-cookie-consent";
-type CookieConsentValue = "accepted" | "refused";
-const readCookieConsent = (): CookieConsentValue | null => {
-  const value = document.cookie.split("; ").find((item) => item.startsWith(`${COOKIE_CONSENT_NAME}=`))?.split("=")[1];
-  return value === "accepted" || value === "refused" ? value : null;
-};
-const writeCookieConsent = (value: CookieConsentValue) => {
-  document.cookie = `${COOKIE_CONSENT_NAME}=${value}; max-age=31536000; path=/; SameSite=Lax`;
-};
-
 const categories: Category[] = [
   { id: "3", label: "Immobilier", icon: Home },
   { id: "6", label: "Smartphone", icon: Smartphone },
@@ -297,7 +286,6 @@ function App() {
   const [installOpen, setInstallOpen] = useState(false);
   const [visitorCount, setVisitorCount] = useState<number | null>(null);
   const [legalPage, setLegalPage] = useState<"conditions" | "confidentialite" | null>(null);
-  const [cookieConsent, setCookieConsent] = useState<CookieConsentValue | null>(() => readCookieConsent());
   const mobileMenuRef = useRef<HTMLDivElement>(null);
   const mobileSearchRef = useRef<HTMLLabelElement>(null);
   const [loading, setLoading] = useState(Boolean(supabase));
@@ -669,7 +657,7 @@ function App() {
           </div>
         </main>
       )}
-      <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur">
+      <header className={profileManagementOpen ? "hidden" : "sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur"}>
         <div className="mx-auto flex max-w-7xl items-center gap-4 px-4 py-3 sm:px-6">
           <button
             className="btn btn-ghost btn-square md:hidden"
@@ -824,7 +812,7 @@ function App() {
           </div>
         )}
       </header>
-      <main id="accueil" className="mx-auto max-w-7xl px-4 pb-12 sm:px-6 sm:pb-16">
+      <main id="accueil" className={profileManagementOpen ? "min-h-screen bg-[#f6f8fc] px-4 py-6 sm:px-6 sm:py-10" : "mx-auto max-w-7xl px-4 pb-12 sm:px-6 sm:pb-16"}>
         {publishOpen && user?.isVerified && (
           <PublishModal
             user={user}
@@ -920,6 +908,11 @@ function App() {
               onMouseEnter={() => setHeroPaused(true)}
               onMouseLeave={() => setHeroPaused(false)}
           >
+              <div className="flex justify-end">
+                <button type="button" onClick={openProducts} className="btn btn-sm rounded-xl bg-[#143ca8] text-white shadow-sm hover:bg-[#102f85]">
+                  Découvrez nos produits <Search size={15} />
+                </button>
+              </div>
               {!isMobileViewport && desktopHeroProducts.length > 0 ? (
                 <>
                   <div className="flex items-center justify-between gap-3">
@@ -1248,7 +1241,7 @@ function App() {
           </div>
         </section>
       </main>
-      <Footer
+      {!profileManagementOpen && <Footer
         contactEmail={contactEmail}
         facebookUrl={facebookUrl}
         tiktokUrl={tiktokUrl}
@@ -1256,8 +1249,7 @@ function App() {
         youtubeUrl={youtubeUrl}
         visitorCount={visitorCount}
         onOpenProducts={openProducts}
-        onManageCookies={() => setCookieConsent(null)}
-      />
+      />}
       {legalPage && <LegalPage page={legalPage} onClose={goHome} />}
       {profileOpen && user && (
         <ProfilePanel
@@ -1274,7 +1266,6 @@ function App() {
       )}
       {(authOpen || authRoute) && <AuthModal key={window.location.hash} initialMode={window.location.hash === "#inscription" ? "signup" : "login"} onClose={() => { setAuthOpen(false); window.location.hash = "accueil"; }} />}
       {passwordResetRoute && <PasswordResetPage onClose={() => { window.history.replaceState(null, "", window.location.pathname); window.location.hash = "accueil"; }} onLogin={() => { window.history.replaceState(null, "", window.location.pathname); window.location.hash = "connexion"; }} />}
-      <CookieConsent consent={cookieConsent} onChange={(value) => { writeCookieConsent(value); setCookieConsent(value); }} />
     </div>
   );
 }
@@ -1373,7 +1364,6 @@ function Footer({
   youtubeUrl,
   visitorCount,
   onOpenProducts,
-  onManageCookies,
 }: {
   contactEmail?: string;
   facebookUrl?: string;
@@ -1382,7 +1372,6 @@ function Footer({
   youtubeUrl?: string;
   visitorCount: number | null;
   onOpenProducts: () => void;
-  onManageCookies: () => void;
 }) {
   return (
     <footer className="border-t border-[#0b1e55] bg-[#102a68] text-white">
@@ -1401,7 +1390,7 @@ function Footer({
             </div>
           </div>
         </div>
-        <div><h2 className="font-bold">Navigation</h2><div className="mt-3 grid gap-1 text-sm text-blue-100"><a href="#accueil" className="flex min-h-10 items-center hover:text-white">Accueil</a><a href="#produits" onClick={(event) => { event.preventDefault(); onOpenProducts(); }} className="flex min-h-10 items-center hover:text-white">Produits</a><a href="#telechargement" className="flex min-h-10 items-center hover:text-white">Télécharger l’application</a><a href="/terms.html" className="flex min-h-10 items-center hover:text-white">Conditions d’utilisation</a><a href="/privacy-policy.html" className="flex min-h-10 items-center hover:text-white">Politique de confidentialité</a><button type="button" onClick={onManageCookies} className="flex min-h-10 items-center text-left hover:text-white">Gérer les cookies</button></div></div>
+        <div><h2 className="font-bold">Navigation</h2><div className="mt-3 grid gap-1 text-sm text-blue-100"><a href="#accueil" className="flex min-h-10 items-center hover:text-white">Accueil</a><a href="#produits" onClick={(event) => { event.preventDefault(); onOpenProducts(); }} className="flex min-h-10 items-center hover:text-white">Produits</a><a href="#telechargement" className="flex min-h-10 items-center hover:text-white">Télécharger l’application</a><a href="/terms.html" className="flex min-h-10 items-center hover:text-white">Conditions d’utilisation</a><a href="/privacy-policy.html" className="flex min-h-10 items-center hover:text-white">Politique de confidentialité</a></div></div>
         <div><h2 className="font-bold">Nous contacter</h2><form className="mt-4 grid gap-3" action={contactEmail ? `mailto:${contactEmail}` : undefined} method="post" encType="text/plain"><input required name="name" placeholder="Votre nom" className="input w-full border-white/20 bg-white/10 text-white placeholder:text-blue-200" /><input required type="email" name="email" placeholder="Votre email" className="input w-full border-white/20 bg-white/10 text-white placeholder:text-blue-200" /><textarea required name="message" placeholder="Votre message" className="textarea min-h-24 w-full border-white/20 bg-white/10 text-white placeholder:text-blue-200" /><button type="submit" disabled={!contactEmail} className="btn w-full border-0 bg-white text-[#102a68] hover:bg-blue-50 disabled:opacity-50">Envoyer le message</button></form></div>
       </div>
       <div className="flex flex-col items-center justify-center gap-3 border-t border-white/15 px-4 py-5 text-center text-xs text-blue-200 sm:flex-row">
@@ -1413,29 +1402,6 @@ function Footer({
         </span>
       </div>
     </footer>
-  );
-}
-
-function CookieConsent({ consent, onChange }: { consent: CookieConsentValue | null; onChange: (value: CookieConsentValue) => void }) {
-  const [open, setOpen] = useState(consent === null);
-  useEffect(() => {
-    if (consent === null) setOpen(true);
-  }, [consent]);
-  if (!open) return null;
-  return (
-    <aside className="fixed inset-x-3 bottom-3 z-[95] rounded-2xl border border-blue-100 bg-white p-4 shadow-2xl shadow-[#143ca8]/20 sm:inset-x-auto sm:left-6 sm:w-[min(30rem,calc(100vw-3rem))]" aria-label="Préférences de cookies">
-      <div className="flex items-start gap-3">
-        <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#edf3ff] text-[#143ca8]"><Cookie size={20} /></span>
-        <div>
-          <h2 className="font-bold text-slate-900">Votre vie privée compte</h2>
-          <p className="mt-1 text-sm leading-5 text-slate-500">Nous utilisons les cookies nécessaires au fonctionnement du site. Avec votre accord, nous pouvons aussi mesurer les visites pour améliorer Mbokamaket.</p>
-        </div>
-      </div>
-      <div className="mt-4 flex flex-wrap gap-2 sm:justify-end">
-        <button type="button" onClick={() => { onChange("refused"); setOpen(false); }} className="btn btn-ghost btn-sm">Refuser</button>
-        <button type="button" onClick={() => { onChange("accepted"); setOpen(false); }} className="btn btn-primary btn-sm">Accepter</button>
-      </div>
-    </aside>
   );
 }
 
