@@ -277,6 +277,7 @@ function App() {
   const [heroProductIndex, setHeroProductIndex] = useState(0);
   const [heroPaused, setHeroPaused] = useState(false);
   const [isMobileViewport, setIsMobileViewport] = useState(() => window.matchMedia("(max-width: 639px)").matches);
+  const [desktopHeroProducts, setDesktopHeroProducts] = useState<Product[]>([]);
   const [sellerFilter, setSellerFilter] = useState<{ id: string; name: string } | null>(null);
   const [favoriteIds, setFavoriteIds] = useState<string[]>(() => {
     try {
@@ -530,6 +531,9 @@ function App() {
     [products],
   );
   const heroProduct = advertisedProducts[heroProductIndex % Math.max(advertisedProducts.length, 1)];
+  useEffect(() => {
+    setDesktopHeroProducts([...advertisedProducts].sort(() => Math.random() - 0.5).slice(0, 3));
+  }, [advertisedProducts]);
   useEffect(() => {
     const mediaQuery = window.matchMedia("(max-width: 639px)");
     const updateViewport = () => setIsMobileViewport(mediaQuery.matches);
@@ -859,11 +863,36 @@ function App() {
         )}
         <section className={`${showProducts || noticeOpen || selectedProduct || publishOpen ? "hidden" : ""} hero-panel relative isolate mt-4 overflow-hidden rounded-[2rem] bg-[#143ca8] text-white shadow-2xl shadow-[#143ca8]/15 sm:mt-6`}>
           <div
-            className="hero-ad-panel relative flex min-h-[27rem] flex-col justify-between overflow-hidden bg-[#f5f8ff] p-5 text-slate-900 sm:min-h-[30rem] sm:p-8 lg:min-h-[25rem] lg:p-7"
+            className="hero-ad-panel relative flex min-h-[27rem] flex-col justify-between overflow-hidden bg-[#f5f8ff] p-5 text-slate-900 sm:min-h-[30rem] sm:p-8 lg:min-h-[19rem] lg:p-5"
               onMouseEnter={() => setHeroPaused(true)}
               onMouseLeave={() => setHeroPaused(false)}
           >
-              {heroProduct ? (
+              {!isMobileViewport && desktopHeroProducts.length > 0 ? (
+                <>
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#143ca8]">À la une</p>
+                      <p className="mt-1 text-sm text-slate-500">Découvrez nos annonces sélectionnées</p>
+                    </div>
+                    <span className="rounded-full bg-[#dbe5ff] px-3 py-1 text-xs font-bold text-[#143ca8]">Sélection aléatoire</span>
+                  </div>
+                  <div className="mt-4 grid flex-1 grid-cols-3 gap-3">
+                    {desktopHeroProducts.map((product) => (
+                      <button key={product.id} type="button" onClick={() => setSelectedProduct(product)} className="group flex min-w-0 flex-col overflow-hidden rounded-xl bg-white text-left shadow-md transition hover:-translate-y-1 hover:shadow-lg" aria-label={`Voir le produit ${product.title}`}>
+                        <div className="relative aspect-[16/9] bg-slate-100">
+                          {product.image ? <img src={product.image} alt={product.title} className="h-full w-full object-cover transition duration-500 group-hover:scale-105" /> : <div className="grid h-full place-items-center text-xs text-slate-400">Pas d’image</div>}
+                          {(product.featured || product.promoted) && <span className="badge absolute left-2 top-2 border-0 bg-orange-400 text-[10px] text-white">Sponsorisé</span>}
+                        </div>
+                        <div className="min-w-0 p-3">
+                          <h2 className="truncate text-sm font-bold">{product.title}</h2>
+                          <PriceDisplay product={product} compact />
+                          <span className="mt-1 flex items-center gap-1 truncate text-[11px] text-slate-500"><MapPin size={12} />{product.location}</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              ) : isMobileViewport && heroProduct ? (
                 <>
                   <div className="flex items-center justify-between gap-3">
                     <div>
