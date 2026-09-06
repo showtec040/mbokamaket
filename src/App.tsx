@@ -276,6 +276,7 @@ function App() {
   const [authOpen, setAuthOpen] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
   const [manageProductsOpen, setManageProductsOpen] = useState(false);
+  const [profileManagementOpen, setProfileManagementOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [heroProductIndex, setHeroProductIndex] = useState(0);
@@ -556,6 +557,7 @@ function App() {
     setSellerFilter(null);
     setPublishOpen(false);
     setManageProductsOpen(false);
+    setProfileManagementOpen(false);
     setNoticeOpen(false);
     setSelectedNotice(null);
     setShowProducts(true);
@@ -566,6 +568,7 @@ function App() {
     setSelectedProduct(null);
     setPublishOpen(false);
     setManageProductsOpen(false);
+    setProfileManagementOpen(false);
     setNoticeOpen(false);
     setSelectedNotice(null);
     setShowProducts(false);
@@ -574,6 +577,7 @@ function App() {
   const openNotifications = () => {
     setPublishOpen(false);
     setManageProductsOpen(false);
+    setProfileManagementOpen(false);
     setShowProducts(false);
     setNoticeOpen(true);
     window.location.hash = "notifications";
@@ -590,6 +594,7 @@ function App() {
       setNoticeOpen(hash === "#notifications");
       setPublishOpen(hash === "#publier");
       setManageProductsOpen(hash === "#mes-produits");
+      setProfileManagementOpen(hash === "#mon-profil");
       setAuthOpen(hash === "#connexion" || hash === "#inscription");
       setLegalPage(hash === "#conditions" ? "conditions" : hash === "#confidentialite" ? "confidentialite" : null);
       if (["#accueil", "#produits", "#notifications", "#telechargement"].includes(hash)) {
@@ -609,12 +614,23 @@ function App() {
   const passwordResetRoute = new URLSearchParams(window.location.search).get("reset") === "1";
   const openManageProducts = () => {
     setProfileOpen(false);
+    setProfileManagementOpen(false);
     setSelectedProduct(null);
     setShowProducts(false);
     setNoticeOpen(false);
     setPublishOpen(false);
     setManageProductsOpen(true);
     window.location.hash = "mes-produits";
+  };
+  const openProfileManagement = () => {
+    setProfileOpen(false);
+    setSelectedProduct(null);
+    setShowProducts(false);
+    setNoticeOpen(false);
+    setPublishOpen(false);
+    setManageProductsOpen(false);
+    setProfileManagementOpen(true);
+    window.location.hash = "mon-profil";
   };
   const deleteProduct = async (product: Product) => {
     if (!supabase || !user || !window.confirm(`Supprimer l’annonce « ${product.title} » ?`)) return;
@@ -825,6 +841,13 @@ function App() {
             onDelete={(product) => void deleteProduct(product)}
           />
         )}
+        {!publishOpen && !manageProductsOpen && profileManagementOpen && user && (
+          <ProfileManagementPage
+            user={user}
+            onClose={goHome}
+            onSaved={(updatedUser) => setUser(updatedUser)}
+          />
+        )}
         {!publishOpen && selectedProduct && (
           <ProductDetails
             product={selectedProduct}
@@ -961,7 +984,7 @@ function App() {
           </div>
         </section>
         <section
-          className={`${showProducts || noticeOpen || selectedProduct || publishOpen || manageProductsOpen ? "hidden" : ""} mt-12 overflow-hidden rounded-[2rem] bg-[#eaf0ff] sm:mt-16`}
+          className={`${showProducts || noticeOpen || selectedProduct || publishOpen || manageProductsOpen || profileManagementOpen ? "hidden" : ""} mt-12 overflow-hidden rounded-[2rem] bg-[#eaf0ff] sm:mt-16`}
         >
           <div className="grid items-center gap-8 px-6 py-8 sm:px-12 sm:py-10 lg:grid-cols-[0.9fr_1.1fr] lg:gap-12">
             <div>
@@ -994,7 +1017,7 @@ function App() {
             </div>
           </div>
         </section>
-        {!showProducts && !noticeOpen && !selectedProduct && !publishOpen && !manageProductsOpen && (
+        {!showProducts && !noticeOpen && !selectedProduct && !publishOpen && !manageProductsOpen && !profileManagementOpen && (
           <section className="mt-5 sm:mt-8">
             <div>
               <div>
@@ -1073,7 +1096,7 @@ function App() {
             {error} <X size={16} />
           </button>
         )}
-        <section className={showProducts && !noticeOpen && !selectedProduct && !publishOpen && !manageProductsOpen ? "mt-10" : "hidden"}>
+        <section className={showProducts && !noticeOpen && !selectedProduct && !publishOpen && !manageProductsOpen && !profileManagementOpen ? "mt-10" : "hidden"}>
           <button onClick={goHome} className="btn btn-ghost mb-5 px-0 text-[#143ca8]">
             Retour à l’accueil
           </button>
@@ -1190,7 +1213,7 @@ function App() {
         </section>
         <section
           id="telechargement"
-          className={`${showProducts || noticeOpen || selectedProduct || publishOpen || manageProductsOpen ? "hidden" : ""} download-section mt-12 border-t border-slate-200 pt-8 sm:mt-16 sm:pt-10`}
+          className={`${showProducts || noticeOpen || selectedProduct || publishOpen || manageProductsOpen || profileManagementOpen ? "hidden" : ""} download-section mt-12 border-t border-slate-200 pt-8 sm:mt-16 sm:pt-10`}
         >
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#143ca8]">
             Toujours avec vous
@@ -1241,6 +1264,8 @@ function App() {
           user={user}
           onClose={() => setProfileOpen(false)}
           onManageProducts={openManageProducts}
+          onManageProfile={openProfileManagement}
+          onPublish={() => { setProfileOpen(false); setPublishOpen(true); window.location.hash = "publier"; }}
           onSignOut={async () => {
             await supabase?.auth.signOut();
             setProfileOpen(false);
@@ -1774,11 +1799,15 @@ function ProfilePanel({
   user,
   onClose,
   onManageProducts,
+  onManageProfile,
+  onPublish,
   onSignOut,
 }: {
   user: User;
   onClose: () => void;
   onManageProducts: () => void;
+  onManageProfile: () => void;
+  onPublish: () => void;
   onSignOut: () => void;
 }) {
   return (
@@ -1810,10 +1839,211 @@ function ProfilePanel({
       <button onClick={onManageProducts} className="btn btn-outline mt-5 w-full justify-start">
         <Package size={16} /> Gérer mes produits
       </button>
+      <button onClick={onManageProfile} className="btn btn-outline mt-3 w-full justify-start">
+        <UserRound size={16} /> Gérer mon profil
+      </button>
+      {user.isVerified && <button onClick={onPublish} className="btn btn-primary mt-3 w-full justify-start bg-[#143ca8]">
+        <Plus size={16} /> Publier une annonce
+      </button>}
       <button onClick={onSignOut} className="btn btn-outline mt-5 w-full">
         <LogOut size={16} /> Se déconnecter
       </button>
     </aside>
+  );
+}
+
+function ProfileManagementPage({
+  user,
+  onClose,
+  onSaved,
+}: {
+  user: User;
+  onClose: () => void;
+  onSaved: (user: User) => void;
+}) {
+  const [form, setForm] = useState({
+    fullName: user.fullName || "",
+    username: user.username || "",
+    phone: "",
+    role: user.role || "buyer",
+    accountType: user.accountType || "personal",
+    businessName: "",
+    address: "",
+    bio: "",
+    avatar: "",
+    showPhone: false,
+  });
+  const [busy, setBusy] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [passwordBusy, setPasswordBusy] = useState(false);
+  const [passwordError, setPasswordError] = useState("");
+  const [passwordSuccess, setPasswordSuccess] = useState("");
+  const update = (field: keyof typeof form, value: string | boolean) => setForm((current) => ({ ...current, [field]: value }));
+
+  useEffect(() => {
+    let active = true;
+    const loadProfile = async () => {
+      if (!supabase) {
+        setError("La configuration Supabase est absente.");
+        setBusy(false);
+        return;
+      }
+      const { data, error: profileError } = await supabase.from("public_profiles").select("*").eq("id", user.id).maybeSingle();
+      if (!active) return;
+      if (profileError) setError(profileError.message);
+      if (data) {
+        setForm((current) => ({
+          ...current,
+          fullName: data.full_name || data.name || current.fullName,
+          username: data.username || current.username,
+          phone: data.phone || "",
+          role: data.role || current.role,
+          accountType: data.account_type || current.accountType,
+          businessName: data.business_name || "",
+          address: data.address || "",
+          bio: data.bio || "",
+          avatar: data.avatar || "",
+          showPhone: Boolean(data.show_phone),
+        }));
+      }
+      setBusy(false);
+    };
+    void loadProfile();
+    return () => { active = false; };
+  }, [user.id, user.fullName, user.username, user.role, user.accountType]);
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setError("");
+    setSuccess("");
+    if (!supabase) {
+      setError("La configuration Supabase est absente.");
+      return;
+    }
+    if (!form.fullName.trim()) {
+      setError("Le nom complet est obligatoire.");
+      return;
+    }
+    if (form.phone && !/^\d{8,15}$/.test(form.phone.replace(/\D/g, ""))) {
+      setError("Le numéro de téléphone n’est pas valide.");
+      return;
+    }
+    setSaving(true);
+    const profile = {
+      id: user.id,
+      name: form.fullName.trim(),
+      full_name: form.fullName.trim(),
+      username: form.username.trim().replace(/^@/, "") || null,
+      phone: form.phone.trim() || null,
+      role: form.role,
+      account_type: form.accountType,
+      business_name: form.businessName.trim() || null,
+      address: form.address.trim() || null,
+      bio: form.bio.trim() || null,
+      avatar: form.avatar.trim() || null,
+      show_phone: form.showPhone,
+    };
+    const { error: profileError } = await supabase.from("public_profiles").upsert(profile, { onConflict: "id" });
+    if (profileError) {
+      setSaving(false);
+      setError(profileError.message);
+      return;
+    }
+    const { error: authError } = await supabase.auth.updateUser({
+      data: {
+        name: profile.full_name,
+        username: profile.username,
+        phone: profile.phone,
+        role: profile.role,
+        account_type: profile.account_type,
+        business_name: profile.business_name,
+      },
+    });
+    setSaving(false);
+    if (authError) {
+      setError(authError.message);
+      return;
+    }
+    const updatedUser = { ...user, fullName: profile.full_name, username: profile.username || undefined, role: profile.role, accountType: profile.account_type };
+    onSaved(updatedUser);
+    setSuccess("Votre profil a été mis à jour.");
+  };
+  const changePassword = async (event: FormEvent) => {
+    event.preventDefault();
+    setPasswordError("");
+    setPasswordSuccess("");
+    if (!supabase) {
+      setPasswordError("La configuration Supabase est absente.");
+      return;
+    }
+    if (newPassword.length < 8) {
+      setPasswordError("Le nouveau mot de passe doit contenir au moins 8 caractères.");
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      setPasswordError("Les mots de passe ne correspondent pas.");
+      return;
+    }
+    setPasswordBusy(true);
+    const { error: passwordUpdateError } = await supabase.auth.updateUser({ password: newPassword });
+    setPasswordBusy(false);
+    if (passwordUpdateError) {
+      setPasswordError(passwordUpdateError.message);
+      return;
+    }
+    setNewPassword("");
+    setConfirmNewPassword("");
+    setPasswordSuccess("Votre mot de passe a été modifié.");
+  };
+
+  return (
+    <section className="mt-6 rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm sm:mt-10 sm:p-8">
+      <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-5">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#143ca8]">Mon compte</p>
+          <h1 className="mt-2 font-display text-3xl font-bold">Gérer mon profil</h1>
+          <p className="mt-2 text-sm text-slate-500">Mettez à jour les informations visibles sur votre compte et vos annonces.</p>
+        </div>
+        <button type="button" onClick={onClose} className="btn btn-ghost btn-sm shrink-0">Retour</button>
+      </div>
+      {busy ? (
+        <div className="flex justify-center py-16"><LoaderCircle className="animate-spin text-[#143ca8]" size={30} /></div>
+      ) : (
+        <form onSubmit={submit} className="mt-6 grid gap-5 lg:grid-cols-2">
+          <label className="form-control"><span className="label-text font-semibold">Nom complet *</span><input required value={form.fullName} onChange={(event) => update("fullName", event.target.value)} className="input input-bordered mt-2 w-full" /></label>
+          <label className="form-control"><span className="label-text font-semibold">Nom utilisateur</span><input value={form.username} onChange={(event) => update("username", event.target.value)} placeholder="mon_nom" className="input input-bordered mt-2 w-full" /></label>
+          <label className="form-control"><span className="label-text font-semibold">Téléphone</span><input value={form.phone} onChange={(event) => update("phone", event.target.value)} placeholder="Numéro de téléphone" className="input input-bordered mt-2 w-full" /></label>
+          <label className="form-control"><span className="label-text font-semibold">Email</span><input value={user.email || ""} readOnly className="input input-bordered mt-2 w-full bg-slate-50" /></label>
+          <label className="form-control"><span className="label-text font-semibold">Type de compte</span><select value={form.accountType} onChange={(event) => update("accountType", event.target.value)} className="select select-bordered mt-2 w-full"><option value="personal">Personnel</option><option value="boutique">Boutique</option><option value="magasin">Magasin</option><option value="agence_immo">Agence immobilière</option></select></label>
+          <label className="form-control"><span className="label-text font-semibold">Rôle</span><select value={form.role} onChange={(event) => update("role", event.target.value)} className="select select-bordered mt-2 w-full"><option value="buyer">Acheteur</option><option value="seller">Vendeur</option></select></label>
+          {(form.accountType === "boutique" || form.accountType === "magasin") && <label className="form-control"><span className="label-text font-semibold">Nom de la boutique ou du magasin</span><input value={form.businessName} onChange={(event) => update("businessName", event.target.value)} className="input input-bordered mt-2 w-full" /></label>}
+          <label className="form-control"><span className="label-text font-semibold">Adresse</span><input value={form.address} onChange={(event) => update("address", event.target.value)} placeholder="Ville, quartier" className="input input-bordered mt-2 w-full" /></label>
+          <label className="form-control lg:col-span-2"><span className="label-text font-semibold">Photo de profil (URL)</span><input type="url" value={form.avatar} onChange={(event) => update("avatar", event.target.value)} placeholder="https://..." className="input input-bordered mt-2 w-full" /></label>
+          <label className="form-control lg:col-span-2"><span className="label-text font-semibold">Présentation</span><textarea maxLength={500} value={form.bio} onChange={(event) => update("bio", event.target.value)} placeholder="Présentez-vous ou décrivez votre activité" className="textarea textarea-bordered mt-2 min-h-28 w-full" /></label>
+          <label className="label cursor-pointer justify-start gap-3 lg:col-span-2"><input type="checkbox" checked={form.showPhone} onChange={(event) => update("showPhone", event.target.checked)} className="toggle toggle-primary" /><span><strong className="block">Afficher mon téléphone aux acheteurs</strong><small className="text-slate-500">Votre numéro pourra apparaître sur vos annonces.</small></span></label>
+          {error && <p className="text-sm text-red-600 lg:col-span-2">{error}</p>}
+          {success && <p className="text-sm text-emerald-600 lg:col-span-2">{success}</p>}
+          <div className="flex flex-wrap gap-3 lg:col-span-2"><button type="button" onClick={onClose} className="btn btn-ghost">Annuler</button><button type="submit" disabled={saving} className="btn bg-[#143ca8] text-white">{saving ? <LoaderCircle className="animate-spin" size={17} /> : "Enregistrer les modifications"}</button></div>
+        </form>
+      )}
+      {!busy && <form onSubmit={changePassword} className="mt-8 border-t border-slate-100 pt-6">
+        <div>
+          <h2 className="font-display text-xl font-bold">Modifier le mot de passe</h2>
+          <p className="mt-1 text-sm text-slate-500">Choisissez un nouveau mot de passe sécurisé pour votre compte.</p>
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <input required minLength={8} type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} placeholder="Nouveau mot de passe" className="input input-bordered w-full" />
+          <input required minLength={8} type="password" value={confirmNewPassword} onChange={(event) => setConfirmNewPassword(event.target.value)} placeholder="Confirmer le nouveau mot de passe" className="input input-bordered w-full" />
+        </div>
+        {passwordError && <p className="mt-3 text-sm text-red-600">{passwordError}</p>}
+        {passwordSuccess && <p className="mt-3 text-sm text-emerald-600">{passwordSuccess}</p>}
+        <button type="submit" disabled={passwordBusy} className="btn mt-4 bg-[#143ca8] text-white">{passwordBusy ? <LoaderCircle className="animate-spin" size={17} /> : "Modifier le mot de passe"}</button>
+      </form>}
+    </section>
   );
 }
 
