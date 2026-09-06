@@ -1317,7 +1317,7 @@ function AuthModal({ initialMode, onClose }: { initialMode: "login" | "signup"; 
     setBusy(true);
     const { error: authError } = await supabase.auth.signInWithOAuth({
       provider,
-      options: { redirectTo: `${window.location.origin}${window.location.pathname}#accueil` },
+      options: { redirectTo: `${window.location.origin}${window.location.pathname}` },
     });
     if (authError) {
       setBusy(false);
