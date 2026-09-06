@@ -19,12 +19,14 @@ import {
   LogOut,
   MapPin,
   Menu,
+  Package,
   Plus,
   Search,
   ShieldCheck,
   Smartphone,
   Trophy,
   Tv,
+  Trash2,
   UserRound,
   X,
 } from "lucide-react";
@@ -72,7 +74,7 @@ function PasswordResetPage({ onClose, onLogin }: { onClose: () => void; onLogin:
       <form onSubmit={submit} className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-sm font-semibold text-[#143ca8]">MbokaMarket</p>
+            <p className="text-sm font-semibold text-[#143ca8]">Mbokamaket</p>
             <h1 className="mt-1 font-display text-2xl font-bold text-slate-900">Nouveau mot de passe</h1>
           </div>
           <button type="button" onClick={onClose} className="btn btn-ghost btn-circle" aria-label="Fermer"><X size={18} /></button>
@@ -248,7 +250,7 @@ const mapProduct = (row: Row): Product => ({
     categoryName.get(String(row.category_id)) ||
     "Autre",
   image: imageFrom(row.images),
-  seller: normalizeDisplayName(row.seller_name) || "Vendeur MbokaMarket",
+  seller: normalizeDisplayName(row.seller_name) || "Vendeur Mbokamaket",
   sellerId: String(row.seller_profile_id || row.seller_id || row.profile_id || row.user_id || ""),
   sellerAvatar: row.seller_avatar_url || "",
   sellerUsername: "",
@@ -273,6 +275,7 @@ function App() {
   const [selectedNotice, setSelectedNotice] = useState<Notice | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
+  const [manageProductsOpen, setManageProductsOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [heroProductIndex, setHeroProductIndex] = useState(0);
@@ -552,6 +555,7 @@ function App() {
   const openProducts = () => {
     setSellerFilter(null);
     setPublishOpen(false);
+    setManageProductsOpen(false);
     setNoticeOpen(false);
     setSelectedNotice(null);
     setShowProducts(true);
@@ -561,6 +565,7 @@ function App() {
     setSellerFilter(null);
     setSelectedProduct(null);
     setPublishOpen(false);
+    setManageProductsOpen(false);
     setNoticeOpen(false);
     setSelectedNotice(null);
     setShowProducts(false);
@@ -568,6 +573,7 @@ function App() {
   };
   const openNotifications = () => {
     setPublishOpen(false);
+    setManageProductsOpen(false);
     setShowProducts(false);
     setNoticeOpen(true);
     window.location.hash = "notifications";
@@ -583,6 +589,7 @@ function App() {
       setShowProducts(hash === "#produits");
       setNoticeOpen(hash === "#notifications");
       setPublishOpen(hash === "#publier");
+      setManageProductsOpen(hash === "#mes-produits");
       setAuthOpen(hash === "#connexion" || hash === "#inscription");
       setLegalPage(hash === "#conditions" ? "conditions" : hash === "#confidentialite" ? "confidentialite" : null);
       if (["#accueil", "#produits", "#notifications", "#telechargement"].includes(hash)) {
@@ -600,14 +607,32 @@ function App() {
   }, []);
   const authRoute = window.location.hash === "#connexion" || window.location.hash === "#inscription";
   const passwordResetRoute = new URLSearchParams(window.location.search).get("reset") === "1";
+  const openManageProducts = () => {
+    setProfileOpen(false);
+    setSelectedProduct(null);
+    setShowProducts(false);
+    setNoticeOpen(false);
+    setPublishOpen(false);
+    setManageProductsOpen(true);
+    window.location.hash = "mes-produits";
+  };
+  const deleteProduct = async (product: Product) => {
+    if (!supabase || !user || !window.confirm(`Supprimer l’annonce « ${product.title} » ?`)) return;
+    const { error: deleteError } = await supabase.from("produits").delete().eq("id", product.id).eq("seller_profile_id", user.id);
+    if (deleteError) {
+      setError(deleteError.message);
+      return;
+    }
+    setProducts((current) => current.filter((item) => item.id !== product.id));
+  };
   return (
     <div className="min-h-screen bg-[#f6f8fc] text-slate-900">
       {installOpen && (
-        <aside className="fixed inset-x-3 bottom-3 z-[90] rounded-2xl border border-blue-100 bg-white p-4 shadow-2xl shadow-[#143ca8]/20 sm:inset-x-auto sm:right-6 sm:w-96" aria-label="Installation de MbokaMarket">
+        <aside className="fixed inset-x-3 bottom-3 z-[90] rounded-2xl border border-blue-100 bg-white p-4 shadow-2xl shadow-[#143ca8]/20 sm:inset-x-auto sm:right-6 sm:w-96" aria-label="Installation de Mbokamaket">
           <div className="flex items-start gap-3">
             <img src={appIcon} alt="" className="size-12 rounded-xl object-contain" />
             <div className="min-w-0 flex-1">
-              <h2 className="font-bold text-slate-900">Installer MbokaMarket</h2>
+              <h2 className="font-bold text-slate-900">Installer Mbokamaket</h2>
               {installPrompt ? (
                 <p className="mt-1 text-sm text-slate-500">Ajoutez l’application à votre écran d’accueil.</p>
               ) : (
@@ -620,16 +645,11 @@ function App() {
         </aside>
       )}
       {loading && (
-        <main className="fixed inset-0 z-[100] grid place-items-center bg-[#143ca8] px-6 text-white md:hidden" aria-busy="true" aria-label="Chargement de MbokaMarket">
+        <main className="fixed inset-0 z-[100] grid place-items-center bg-[#143ca8] px-6 text-white md:hidden" aria-busy="true" aria-label="Chargement de Mbokamaket">
           <div className="flex flex-col items-center text-center">
-            <div className="grid size-24 place-items-center rounded-[1.75rem] bg-white p-4 shadow-2xl shadow-black/20">
-              <img src={appIcon} alt="MbokaMarket" className="size-full object-contain" />
-            </div>
-            <h1 className="mt-6 font-display text-2xl font-bold">MbokaMarket</h1>
+            <LoaderCircle className="size-16 animate-spin text-white" strokeWidth={1.5} aria-hidden="true" />
+            <h1 className="mt-6 font-display text-2xl font-bold">Mbokamaket</h1>
             <p className="mt-2 text-sm text-blue-100">Chargement de votre marché...</p>
-            <span className="mt-6 h-1.5 w-32 overflow-hidden rounded-full bg-blue-300/30">
-              <span className="block h-full w-1/2 animate-pulse rounded-full bg-white" />
-            </span>
           </div>
         </main>
       )}
@@ -648,7 +668,7 @@ function App() {
             </span>
             <span className="hidden sm:block">
               <strong className="block font-display text-lg leading-none text-[#143ca8]">
-                MbokaMarket
+                Mbokamaket
               </strong>
               <small className="text-[10px] uppercase tracking-widest text-slate-400">
                 Le marché près de vous
@@ -796,6 +816,15 @@ function App() {
             onCreated={() => { setPublishOpen(false); void loadProducts(); window.location.hash = "accueil"; }}
           />
         )}
+        {!publishOpen && manageProductsOpen && user && (
+          <ManageProductsPage
+            products={products.filter((product) => product.sellerId === user.id)}
+            onClose={goHome}
+            onPublish={() => { setManageProductsOpen(false); setPublishOpen(true); window.location.hash = "publier"; }}
+            onViewProduct={(product) => { setManageProductsOpen(false); setSelectedProduct(product); window.location.hash = "accueil"; }}
+            onDelete={(product) => void deleteProduct(product)}
+          />
+        )}
         {!publishOpen && selectedProduct && (
           <ProductDetails
             product={selectedProduct}
@@ -932,14 +961,14 @@ function App() {
           </div>
         </section>
         <section
-          className={`${showProducts || noticeOpen || selectedProduct || publishOpen ? "hidden" : ""} mt-12 overflow-hidden rounded-[2rem] bg-[#eaf0ff] sm:mt-16`}
+          className={`${showProducts || noticeOpen || selectedProduct || publishOpen || manageProductsOpen ? "hidden" : ""} mt-12 overflow-hidden rounded-[2rem] bg-[#eaf0ff] sm:mt-16`}
         >
           <div className="grid items-center gap-8 px-6 py-8 sm:px-12 sm:py-10 lg:grid-cols-[0.9fr_1.1fr] lg:gap-12">
             <div>
               <div className="flex items-center gap-3">
                 <img src={appIcon} alt="" className="size-12 rounded-xl shadow-md" />
                 <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#143ca8]">
-                  L’expérience MbokaMarket
+                  L’expérience Mbokamaket
                 </p>
               </div>
                 <h2 className="mt-4 font-display text-3xl font-bold leading-tight sm:text-4xl">
@@ -965,7 +994,7 @@ function App() {
             </div>
           </div>
         </section>
-        {!showProducts && !noticeOpen && !selectedProduct && !publishOpen && (
+        {!showProducts && !noticeOpen && !selectedProduct && !publishOpen && !manageProductsOpen && (
           <section className="mt-5 sm:mt-8">
             <div>
               <div>
@@ -1044,7 +1073,7 @@ function App() {
             {error} <X size={16} />
           </button>
         )}
-        <section className={showProducts && !noticeOpen && !selectedProduct && !publishOpen ? "mt-10" : "hidden"}>
+        <section className={showProducts && !noticeOpen && !selectedProduct && !publishOpen && !manageProductsOpen ? "mt-10" : "hidden"}>
           <button onClick={goHome} className="btn btn-ghost mb-5 px-0 text-[#143ca8]">
             Retour à l’accueil
           </button>
@@ -1161,13 +1190,13 @@ function App() {
         </section>
         <section
           id="telechargement"
-          className={`${showProducts || noticeOpen || selectedProduct || publishOpen ? "hidden" : ""} download-section mt-12 border-t border-slate-200 pt-8 sm:mt-16 sm:pt-10`}
+          className={`${showProducts || noticeOpen || selectedProduct || publishOpen || manageProductsOpen ? "hidden" : ""} download-section mt-12 border-t border-slate-200 pt-8 sm:mt-16 sm:pt-10`}
         >
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#143ca8]">
             Toujours avec vous
           </p>
           <h2 className="mt-2 font-display text-3xl font-bold">
-            Téléchargez MbokaMarket
+            Téléchargez Mbokamaket
           </h2>
           <p className="mt-3 text-slate-500">
             Retrouvez toutes les fonctionnalités de l’application sur votre
@@ -1211,6 +1240,7 @@ function App() {
         <ProfilePanel
           user={user}
           onClose={() => setProfileOpen(false)}
+          onManageProducts={openManageProducts}
           onSignOut={async () => {
             await supabase?.auth.signOut();
             setProfileOpen(false);
@@ -1278,7 +1308,7 @@ function DownloadCard({
           href={href}
           target={download ? "_self" : "_blank"}
           rel={download ? undefined : "noopener noreferrer"}
-          download={download ? "MbokaMarket-v1.0.0.apk" : undefined}
+          download={download ? "Mbokamaket-v1.0.0.apk" : undefined}
           type={download ? "application/vnd.android.package-archive" : undefined}
           className="btn btn-sm rounded-lg bg-[#143ca8] text-white"
         >
@@ -1302,7 +1332,7 @@ function AppPreview({
 }) {
   return (
     <figure className={`overflow-hidden rounded-[1.25rem] border-4 border-white bg-white shadow-xl ${className}`}>
-      <img src={image} alt={`Écran MbokaMarket : ${label}`} loading="lazy" decoding="async" className="aspect-[9/16] w-full object-cover object-top" />
+      <img src={image} alt={`Écran Mbokamaket : ${label}`} loading="lazy" decoding="async" className="aspect-[9/16] w-full object-cover object-top" />
       <figcaption className="px-2 py-2 text-center text-xs font-bold text-[#143ca8] sm:px-3 sm:py-3 sm:text-sm">
         {label}
       </figcaption>
@@ -1333,7 +1363,7 @@ function Footer({
     <footer className="border-t border-[#0b1e55] bg-[#102a68] text-white">
       <div className="mx-auto grid max-w-7xl gap-8 px-4 py-8 sm:px-6 md:grid-cols-[1fr_1.15fr_1fr] md:gap-12 md:py-12">
         <div>
-          <div className="flex items-center gap-3"><img src={appIcon} alt="Logo MbokaMarket" loading="lazy" decoding="async" className="size-11 rounded-xl" /><strong className="font-display text-xl">MbokaMarket</strong></div>
+          <div className="flex items-center gap-3"><img src={appIcon} alt="Logo Mbokamaket" loading="lazy" decoding="async" className="size-11 rounded-xl" /><strong className="font-display text-xl">Mbokamaket</strong></div>
           <p className="mt-4 max-w-xs text-sm leading-6 text-blue-100">Achetez, vendez et découvrez près de chez vous.</p>
           {visitorCount !== null && <p className="mt-3 text-sm text-blue-100"><Eye size={15} className="mr-1 inline-block" />{visitorCount.toLocaleString("fr-FR")} visiteurs</p>}
           <div className="mt-6">
@@ -1350,7 +1380,7 @@ function Footer({
         <div><h2 className="font-bold">Nous contacter</h2><form className="mt-4 grid gap-3" action={contactEmail ? `mailto:${contactEmail}` : undefined} method="post" encType="text/plain"><input required name="name" placeholder="Votre nom" className="input w-full border-white/20 bg-white/10 text-white placeholder:text-blue-200" /><input required type="email" name="email" placeholder="Votre email" className="input w-full border-white/20 bg-white/10 text-white placeholder:text-blue-200" /><textarea required name="message" placeholder="Votre message" className="textarea min-h-24 w-full border-white/20 bg-white/10 text-white placeholder:text-blue-200" /><button type="submit" disabled={!contactEmail} className="btn w-full border-0 bg-white text-[#102a68] hover:bg-blue-50 disabled:opacity-50">Envoyer le message</button></form></div>
       </div>
       <div className="flex flex-col items-center justify-center gap-3 border-t border-white/15 px-4 py-5 text-center text-xs text-blue-200 sm:flex-row">
-        <span>© {new Date().getFullYear()} MbokaMarket. Tous droits réservés.</span>
+        <span>© {new Date().getFullYear()} Mbokamaket. Tous droits réservés.</span>
         <span className="hidden text-blue-300 sm:inline" aria-hidden="true">|</span>
         <span className="inline-flex items-center gap-2">
           Propriété de Kambexa
@@ -1373,7 +1403,7 @@ function CookieConsent({ consent, onChange }: { consent: CookieConsentValue | nu
         <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#edf3ff] text-[#143ca8]"><Cookie size={20} /></span>
         <div>
           <h2 className="font-bold text-slate-900">Votre vie privée compte</h2>
-          <p className="mt-1 text-sm leading-5 text-slate-500">Nous utilisons les cookies nécessaires au fonctionnement du site. Avec votre accord, nous pouvons aussi mesurer les visites pour améliorer MbokaMarket.</p>
+          <p className="mt-1 text-sm leading-5 text-slate-500">Nous utilisons les cookies nécessaires au fonctionnement du site. Avec votre accord, nous pouvons aussi mesurer les visites pour améliorer Mbokamaket.</p>
         </div>
       </div>
       <div className="mt-4 flex flex-wrap gap-2 sm:justify-end">
@@ -1392,12 +1422,12 @@ function LegalPage({ page, onClose }: { page: "conditions" | "confidentialite"; 
         <div className="flex items-center justify-between gap-4">
           <a href="#accueil" onClick={onClose} className="flex items-center gap-2 text-[#143ca8]">
             <span className="grid size-10 place-items-center rounded-xl bg-[#143ca8] text-lg font-black text-white">M</span>
-            <strong className="font-display text-lg">MbokaMarket</strong>
+            <strong className="font-display text-lg">Mbokamaket</strong>
           </a>
           <button type="button" onClick={onClose} className="btn btn-ghost rounded-xl">Retour à l’accueil</button>
         </div>
         <article className="mt-8 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8">
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#143ca8]">MbokaMarket</p>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#143ca8]">Mbokamaket</p>
           <h1 className="mt-2 font-display text-3xl font-bold text-slate-900">{isTerms ? "Conditions d’utilisation" : "Politique de confidentialité"}</h1>
           <p className="mt-2 text-sm text-slate-500">Dernière mise à jour : 6 septembre 2026</p>
           {isTerms ? <TermsContent /> : <PrivacyContent />}
@@ -1410,10 +1440,10 @@ function LegalPage({ page, onClose }: { page: "conditions" | "confidentialite"; 
 function TermsContent() {
   return (
     <div className="mt-8 space-y-6 leading-7 text-slate-600">
-      <section><h2 className="text-xl font-bold text-slate-900">1. Objet du service</h2><p>MbokaMarket est une plateforme qui permet aux utilisateurs de publier, découvrir et contacter des vendeurs pour des produits et services proposés localement.</p></section>
+      <section><h2 className="text-xl font-bold text-slate-900">1. Objet du service</h2><p>Mbokamaket est une plateforme qui permet aux utilisateurs de publier, découvrir et contacter des vendeurs pour des produits et services proposés localement.</p></section>
       <section><h2 className="text-xl font-bold text-slate-900">2. Utilisation de la plateforme</h2><p>L’utilisateur s’engage à fournir des informations exactes, à respecter les lois applicables et à ne pas publier de contenu frauduleux, illégal, trompeur ou portant atteinte aux droits d’autrui.</p></section>
-      <section><h2 className="text-xl font-bold text-slate-900">3. Annonces et transactions</h2><p>Les vendeurs sont responsables de leurs annonces, de leurs produits et de leurs échanges avec les acheteurs. MbokaMarket n’est pas partie aux transactions et recommande de vérifier le produit et le vendeur avant tout paiement.</p></section>
-      <section><h2 className="text-xl font-bold text-slate-900">4. Compte utilisateur</h2><p>L’utilisateur doit protéger ses identifiants et signaler toute utilisation non autorisée de son compte. MbokaMarket peut suspendre une annonce ou un compte en cas de non-respect des présentes conditions.</p></section>
+      <section><h2 className="text-xl font-bold text-slate-900">3. Annonces et transactions</h2><p>Les vendeurs sont responsables de leurs annonces, de leurs produits et de leurs échanges avec les acheteurs. Mbokamaket n’est pas partie aux transactions et recommande de vérifier le produit et le vendeur avant tout paiement.</p></section>
+      <section><h2 className="text-xl font-bold text-slate-900">4. Compte utilisateur</h2><p>L’utilisateur doit protéger ses identifiants et signaler toute utilisation non autorisée de son compte. Mbokamaket peut suspendre une annonce ou un compte en cas de non-respect des présentes conditions.</p></section>
       <section><h2 className="text-xl font-bold text-slate-900">5. Contact</h2><p>Pour toute question, écrivez à <a className="font-semibold text-[#143ca8]" href="mailto:contact@mbokamaket.com">contact@mbokamaket.com</a>.</p></section>
     </div>
   );
@@ -1423,7 +1453,7 @@ function PrivacyContent() {
   return (
     <div className="mt-8 space-y-6 leading-7 text-slate-600">
       <section><h2 className="text-xl font-bold text-slate-900">1. Données collectées</h2><p>Nous pouvons collecter les informations nécessaires à la création du compte, aux annonces, aux favoris, aux notifications et aux échanges avec les utilisateurs.</p></section>
-      <section><h2 className="text-xl font-bold text-slate-900">2. Utilisation des données</h2><p>Ces données servent à fournir les fonctionnalités de MbokaMarket, sécuriser les comptes, afficher les annonces et améliorer le service. Nous ne vendons pas les données personnelles des utilisateurs.</p></section>
+      <section><h2 className="text-xl font-bold text-slate-900">2. Utilisation des données</h2><p>Ces données servent à fournir les fonctionnalités de Mbokamaket, sécuriser les comptes, afficher les annonces et améliorer le service. Nous ne vendons pas les données personnelles des utilisateurs.</p></section>
       <section><h2 className="text-xl font-bold text-slate-900">3. Supabase et stockage</h2><p>Les données applicatives sont hébergées via Supabase. Les utilisateurs doivent éviter de partager des informations sensibles dans une annonce ou un message public.</p></section>
       <section><h2 className="text-xl font-bold text-slate-900">4. Conservation et droits</h2><p>Nous conservons les données pendant la durée nécessaire au fonctionnement du service. Vous pouvez demander l’accès, la correction ou la suppression de vos données en écrivant à notre adresse de contact.</p></section>
       <section><h2 className="text-xl font-bold text-slate-900">5. Contact</h2><p>Pour toute demande concernant vos données personnelles, écrivez à <a className="font-semibold text-[#143ca8]" href="mailto:contact@mbokamaket.com">contact@mbokamaket.com</a>.</p></section>
@@ -1743,10 +1773,12 @@ void PublishModal;
 function ProfilePanel({
   user,
   onClose,
+  onManageProducts,
   onSignOut,
 }: {
   user: User;
   onClose: () => void;
+  onManageProducts: () => void;
   onSignOut: () => void;
 }) {
   return (
@@ -1775,12 +1807,82 @@ function ProfilePanel({
         {user.username && <p className="text-sm text-slate-500">@{user.username.replace(/^@/, "")}</p>}
         <p className="truncate text-sm text-slate-400">{user.email}</p>
       </div>
+      <button onClick={onManageProducts} className="btn btn-outline mt-5 w-full justify-start">
+        <Package size={16} /> Gérer mes produits
+      </button>
       <button onClick={onSignOut} className="btn btn-outline mt-5 w-full">
         <LogOut size={16} /> Se déconnecter
       </button>
     </aside>
   );
 }
+
+function ManageProductsPage({
+  products,
+  onClose,
+  onPublish,
+  onViewProduct,
+  onDelete,
+}: {
+  products: Product[];
+  onClose: () => void;
+  onPublish: () => void;
+  onViewProduct: (product: Product) => void;
+  onDelete: (product: Product) => void;
+}) {
+  return (
+    <section className="mt-6 rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm sm:mt-10 sm:p-8">
+      <div className="flex flex-col gap-4 border-b border-slate-100 pb-5 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#143ca8]">Espace vendeur</p>
+          <h1 className="mt-2 font-display text-3xl font-bold">Mes produits</h1>
+          <p className="mt-2 text-sm text-slate-500">Consultez et gérez vos annonces publiées.</p>
+        </div>
+        <div className="flex gap-2">
+          <button type="button" onClick={onClose} className="btn btn-ghost">Retour</button>
+          <button type="button" onClick={onPublish} className="btn bg-[#143ca8] text-white"><Plus size={17} /> Publier</button>
+        </div>
+      </div>
+      {products.length === 0 ? (
+        <div className="py-16 text-center">
+          <Package className="mx-auto text-slate-300" size={42} />
+          <h2 className="mt-4 text-lg font-bold">Vous n’avez aucun produit</h2>
+          <p className="mt-2 text-sm text-slate-500">Publiez votre première annonce pour la retrouver ici.</p>
+          <button type="button" onClick={onPublish} className="btn mt-5 bg-[#143ca8] text-white"><Plus size={17} /> Publier une annonce</button>
+        </div>
+      ) : (
+        <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {products.map((product) => (
+            <article key={product.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+              <button type="button" onClick={() => onViewProduct(product)} className="block w-full text-left">
+                <div className="aspect-[4/3] bg-slate-100">
+                  {product.image ? <img src={product.image} alt={product.title} className="h-full w-full object-cover" /> : <div className="grid h-full place-items-center text-slate-400">Pas d’image</div>}
+                </div>
+                <div className="p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <h2 className="line-clamp-2 font-bold">{product.title}</h2>
+                    <span className={`badge shrink-0 border-0 ${product.status === "active" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>
+                      {product.status === "active" ? "Active" : product.status}
+                    </span>
+                  </div>
+                  <PriceDisplay product={product} compact />
+                  <p className="mt-2 text-xs text-slate-500">{product.location} · {product.category}</p>
+                </div>
+              </button>
+              <div className="flex gap-2 border-t border-slate-100 p-3">
+                <button type="button" onClick={() => onViewProduct(product)} className="btn btn-ghost btn-sm flex-1">Voir</button>
+                <button type="button" onClick={() => onDelete(product)} className="btn btn-ghost btn-sm text-red-600" aria-label={`Supprimer ${product.title}`} title="Supprimer">
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function Modal({ children }: { children: ReactNode }) {
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4">
@@ -1809,7 +1911,7 @@ function PriceDisplay({ product, compact = false }: { product: Product; compact?
 function ProductDetails({ product, isFavorite, onToggleFavorite, onClose, onSellerProducts, onDownload }: { product: Product; isFavorite: boolean; onToggleFavorite: () => void; onClose: () => void; onSellerProducts: () => void; onDownload: () => void }) {
   const whatsappNumber = normalizeWhatsAppNumber(product.phone);
   const whatsappUrl = whatsappNumber
-    ? `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(`Bonjour, je suis intéressé par votre annonce « ${product.title} » sur MbokaMarket.`)}`
+    ? `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(`Bonjour, je suis intéressé par votre annonce « ${product.title} » sur Mbokamaket.`)}`
     : "";
   return (
       <section className="product-details-page mt-6 overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm sm:mt-10">
