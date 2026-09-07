@@ -263,6 +263,7 @@ function App() {
   const [noticeOpen, setNoticeOpen] = useState(false);
   const [selectedNotice, setSelectedNotice] = useState<Notice | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
+  const [authSuccessMessage, setAuthSuccessMessage] = useState("");
   const [publishOpen, setPublishOpen] = useState(false);
   const [manageProductsOpen, setManageProductsOpen] = useState(false);
   const [profileManagementOpen, setProfileManagementOpen] = useState(false);
@@ -408,9 +409,19 @@ function App() {
   };
   useEffect(() => {
     if (!supabase) return;
+    const showPendingAuthSuccess = () => {
+      const pendingType = localStorage.getItem("mbokamaket-auth-success-pending");
+      if (!pendingType) return;
+      localStorage.removeItem("mbokamaket-auth-success-pending");
+      setAuthSuccessMessage(pendingType === "signup"
+        ? "Votre compte a été créé avec succès. Vérifiez votre email pour activer le compte."
+        : "Connexion réussie.");
+      window.setTimeout(() => setAuthSuccessMessage(""), 5000);
+    };
     supabase.auth.getSession().then(({ data }) => {
       const sessionUser = data.session?.user;
       if (sessionUser) {
+        showPendingAuthSuccess();
         supabase!.from("public_profiles").select("*").eq("id", sessionUser.id).maybeSingle().then(({ data: profile }) => {
           const fullName = getProfileDisplayName({
             ...profile,
@@ -432,6 +443,7 @@ function App() {
           setUser(null);
           return;
         }
+        showPendingAuthSuccess();
         supabase!.from("public_profiles").select("*").eq("id", sessionUser.id).maybeSingle().then(({ data: profile }) => {
           const fullName = getProfileDisplayName({
             ...profile,
@@ -598,6 +610,15 @@ function App() {
       window.removeEventListener("hashchange", handleHashChange);
     };
   }, []);
+  useEffect(() => {
+    const productId = new URLSearchParams(window.location.search).get("produit");
+    if (!productId || products.length === 0) return;
+    const sharedProduct = products.find((product) => product.id === productId);
+    if (!sharedProduct) return;
+    setSelectedProduct(sharedProduct);
+    setShowProducts(false);
+    window.location.hash = "accueil";
+  }, [products]);
   const authRoute = window.location.hash === "#connexion" || window.location.hash === "#inscription";
   const passwordResetRoute = new URLSearchParams(window.location.search).get("reset") === "1";
   const openManageProducts = () => {
@@ -1265,6 +1286,7 @@ function App() {
         />
       )}
       {(authOpen || authRoute) && <AuthModal key={window.location.hash} initialMode={window.location.hash === "#inscription" ? "signup" : "login"} onClose={() => { setAuthOpen(false); window.location.hash = "accueil"; }} />}
+      {authSuccessMessage && <div className="fixed right-4 top-4 z-[120] max-w-sm rounded-2xl bg-emerald-600 px-5 py-4 text-sm font-semibold text-white shadow-2xl" role="status">{authSuccessMessage}</div>}
       {passwordResetRoute && <PasswordResetPage onClose={() => { window.history.replaceState(null, "", window.location.pathname); window.location.hash = "accueil"; }} onLogin={() => { window.history.replaceState(null, "", window.location.pathname); window.location.hash = "connexion"; }} />}
     </div>
   );
@@ -1505,13 +1527,16 @@ function AuthModal({ initialMode, onClose }: { initialMode: "login" | "signup"; 
     const authError = result.error;
     setBusy(false);
     if (authError) setError(authError.message);
-    else onClose();
+    else setSuccess(mode === "signup"
+      ? "Votre compte a été créé avec succès. Vérifiez votre email pour activer le compte."
+      : "Connexion réussie.");
   };
   const signInWithProvider = async (provider: "google" | "facebook") => {
     if (!supabase) {
       setError("La configuration Supabase est absente.");
       return;
     }
+    localStorage.setItem("mbokamaket-auth-success-pending", "login");
     setBusy(true);
     const { error: authError } = await supabase.auth.signInWithOAuth({
       provider,
@@ -2135,8 +2160,14 @@ function PriceDisplay({ product, compact = false }: { product: Product; compact?
 
 function ProductDetails({ product, isFavorite, onToggleFavorite, onClose, onSellerProducts, onDownload }: { product: Product; isFavorite: boolean; onToggleFavorite: () => void; onClose: () => void; onSellerProducts: () => void; onDownload: () => void }) {
   const whatsappNumber = normalizeWhatsAppNumber(product.phone);
+  const productUrl = `${window.location.origin}${window.location.pathname}?produit=${encodeURIComponent(product.id)}`;
+  const whatsappMessage = [
+    `Bonjour, je suis intéressé par votre annonce « ${product.title} » sur Mbokamaket.`,
+    `Voir le produit : ${productUrl}`,
+    product.image ? `Photo du produit : ${product.image}` : "",
+  ].filter(Boolean).join("\n\n");
   const whatsappUrl = whatsappNumber
-    ? `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(`Bonjour, je suis intéressé par votre annonce « ${product.title} » sur Mbokamaket.`)}`
+    ? `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(whatsappMessage)}`
     : "";
   return (
       <section className="product-details-page mt-6 overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm sm:mt-10">
