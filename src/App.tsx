@@ -285,6 +285,7 @@ function App() {
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [installOpen, setInstallOpen] = useState(false);
+  const [mobileAppPromptOpen, setMobileAppPromptOpen] = useState(false);
   const [visitorCount, setVisitorCount] = useState<number | null>(null);
   const [legalPage, setLegalPage] = useState<"conditions" | "confidentialite" | null>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
@@ -331,6 +332,9 @@ function App() {
       || Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
     const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
     if (isStandalone || !isMobile) return;
+    const sharedRoute = new URLSearchParams(window.location.search).has("produit")
+      || new URLSearchParams(window.location.search).has("profil");
+    if (sharedRoute) setMobileAppPromptOpen(true);
     const showInstallPrompt = (event: Event) => {
       event.preventDefault();
       setInstallPrompt(event as BeforeInstallPromptEvent);
@@ -619,6 +623,17 @@ function App() {
     setShowProducts(false);
   }, [products]);
   useEffect(() => {
+    const profileId = new URLSearchParams(window.location.search).get("profil");
+    if (!profileId || products.length === 0) return;
+    const sellerProduct = products.find((product) => product.sellerId === profileId);
+    if (!sellerProduct) return;
+    setSelectedProduct(null);
+    setQuery("");
+    setCategory("Toutes");
+    setSellerFilter({ id: profileId, name: sellerProduct.seller });
+    setShowProducts(true);
+  }, [products]);
+  useEffect(() => {
     if (!selectedProduct) return;
     const previousTitle = document.title;
     const metadata = [
@@ -696,6 +711,7 @@ function App() {
           {installPrompt && <button type="button" onClick={() => void installApp()} className="btn mt-3 w-full rounded-xl bg-[#143ca8] text-white">Installer l’application</button>}
         </aside>
       )}
+      {mobileAppPromptOpen && <MobileAppPrompt onClose={() => setMobileAppPromptOpen(false)} />}
       {loading && (
         <main className="fixed inset-0 z-[100] grid place-items-center bg-[#143ca8] px-6 text-white md:hidden" aria-busy="true" aria-label="Chargement de Mbokamaket">
           <div className="flex flex-col items-center text-center">
@@ -1316,6 +1332,31 @@ function App() {
       {authSuccessMessage && <div className="fixed right-4 top-4 z-[120] max-w-sm rounded-2xl bg-emerald-600 px-5 py-4 text-sm font-semibold text-white shadow-2xl" role="status">{authSuccessMessage}</div>}
       {passwordResetRoute && <PasswordResetPage onClose={() => { window.history.replaceState(null, "", window.location.pathname); window.location.hash = "accueil"; }} onLogin={() => { window.history.replaceState(null, "", window.location.pathname); window.location.hash = "connexion"; }} />}
     </div>
+  );
+}
+
+function MobileAppPrompt({ onClose }: { onClose: () => void }) {
+  const sharedQuery = window.location.search;
+  const appUrl = `mbokamaket://open${sharedQuery}`;
+  const fallbackUrl = `${window.location.pathname}${sharedQuery}${window.location.hash}`;
+  const openNativeApp = () => {
+    window.location.href = appUrl;
+    window.setTimeout(() => {
+      if (document.visibilityState === "visible") window.location.href = fallbackUrl;
+    }, 1200);
+  };
+  return (
+    <aside className="fixed inset-x-3 top-3 z-[110] rounded-2xl border border-blue-100 bg-white p-4 shadow-2xl shadow-[#143ca8]/20" aria-label="Ouvrir dans l’application Mbokamaket">
+      <div className="flex items-start gap-3">
+        <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-[#edf3ff] text-[#143ca8]"><Smartphone size={22} /></span>
+        <div className="min-w-0 flex-1">
+          <h2 className="font-bold text-slate-900">Ouvrir dans l’application Mbokamaket</h2>
+          <p className="mt-1 text-sm text-slate-500">Retrouvez directement ce produit ou ce profil dans l’application mobile.</p>
+        </div>
+        <button type="button" onClick={onClose} className="btn btn-ghost btn-circle btn-sm" aria-label="Fermer"><X size={16} /></button>
+      </div>
+      <button type="button" onClick={openNativeApp} className="btn mt-3 w-full rounded-xl bg-[#143ca8] text-white">Ouvrir l’application</button>
+    </aside>
   );
 }
 
@@ -2188,10 +2229,14 @@ function PriceDisplay({ product, compact = false }: { product: Product; compact?
 function ProductDetails({ product, isFavorite, onToggleFavorite, onClose, onSellerProducts, onDownload }: { product: Product; isFavorite: boolean; onToggleFavorite: () => void; onClose: () => void; onSellerProducts: () => void; onDownload: () => void }) {
   const whatsappNumber = normalizeWhatsAppNumber(product.phone);
   const productUrl = `${window.location.origin}${window.location.pathname}?produit=${encodeURIComponent(product.id)}`;
+  const profileUrl = `${window.location.origin}${window.location.pathname}?profil=${encodeURIComponent(product.sellerId)}`;
   const whatsappMessage = `Bonjour, je suis intéressé par votre annonce « ${product.title} » sur Mbokamaket.\n\nVoir le produit : ${productUrl}`;
   const whatsappUrl = whatsappNumber
     ? `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(whatsappMessage)}`
     : "";
+  const profileShareUrl = whatsappNumber
+    ? `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(`Découvrez le profil de ${product.seller} sur Mbokamaket : ${profileUrl}`)}`
+    : profileUrl;
   return (
       <section className="product-details-page mt-6 overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm sm:mt-10">
         <div className="flex items-center justify-between border-b border-slate-100 p-5">
@@ -2233,6 +2278,7 @@ function ProductDetails({ product, isFavorite, onToggleFavorite, onClose, onSell
                 </div>
               </div>
               <button onClick={onSellerProducts} className="btn btn-outline mt-4 w-full">Voir ses produits</button>
+              <a href={profileShareUrl} target="_blank" rel="noreferrer" className="btn btn-outline mt-3 w-full">Partager le profil</a>
               {whatsappUrl ? <a href={whatsappUrl} target="_blank" rel="noreferrer" className="btn mt-3 w-full bg-[#25D366] text-white">Contacter sur WhatsApp</a> : null}
               <a href="#telechargement" onClick={onDownload} className="btn btn-primary mt-3 w-full bg-[#143ca8]">Télécharger l’application</a>
             </div>
