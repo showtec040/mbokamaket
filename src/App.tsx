@@ -1866,7 +1866,7 @@ function ProfileManagementPage({
       if (data) {
         setForm((current) => ({
           ...current,
-          fullName: data.full_name || data.name || current.fullName,
+          fullName: data.name || current.fullName,
           username: data.username || current.username,
           phone: data.phone || "",
           role: data.role || current.role,
@@ -1909,7 +1909,6 @@ function ProfileManagementPage({
     const profile = {
       id: user.id,
       name: form.fullName.trim(),
-      full_name: form.fullName.trim(),
       username: form.username.trim().replace(/^@/, "") || null,
       phone: form.phone.trim() || null,
       role: form.role,
@@ -1920,7 +1919,7 @@ function ProfileManagementPage({
       avatar: form.avatar.trim() || null,
       show_phone: form.showPhone,
     };
-    const { error: profileError } = await supabase.from("public_profiles").upsert(profile, { onConflict: "id" });
+    const { error: profileError } = await supabase.from("profiles").upsert(profile, { onConflict: "id" });
     if (profileError) {
       setSaving(false);
       setError(profileError.message);
@@ -1928,7 +1927,7 @@ function ProfileManagementPage({
     }
     const { error: authError } = await supabase.auth.updateUser({
       data: {
-        name: profile.full_name,
+        name: profile.name,
         username: profile.username,
         phone: profile.phone,
         role: profile.role,
@@ -1941,7 +1940,7 @@ function ProfileManagementPage({
       setError(authError.message);
       return;
     }
-    const updatedUser = { ...user, fullName: profile.full_name, username: profile.username || undefined, role: profile.role, accountType: profile.account_type };
+    const updatedUser = { ...user, fullName: profile.name, username: profile.username || undefined, role: profile.role, accountType: profile.account_type };
     onSaved(updatedUser);
     setSuccess("Votre profil a été mis à jour.");
   };
