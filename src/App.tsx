@@ -179,7 +179,9 @@ const PRODUCT_IMAGES_BUCKET = "product-images";
 const DEFAULT_APK_URL = "https://www.dropbox.com/scl/fi/5zdwh2zrttr476fkc50it/MbokaMarket-v1.0.0.apk.apk?rlkey=6t6ead4jxe465hfcy87plwx9s&st=hds9drrx&dl=1";
 const getAuthRedirectUrl = () => {
   const configuredUrl = (import.meta.env.VITE_AUTH_REDIRECT_URL as string | undefined)?.trim();
-  return configuredUrl || `${window.location.origin}${window.location.pathname}`;
+  if (configuredUrl) return configuredUrl;
+  const isMobileDevice = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  return isMobileDevice ? "mbokamaket://auth/callback" : `${window.location.origin}${window.location.pathname}`;
 };
 const categories: Category[] = [
   { id: "3", label: "Immobilier", icon: Home },
