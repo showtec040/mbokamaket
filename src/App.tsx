@@ -617,8 +617,35 @@ function App() {
     if (!sharedProduct) return;
     setSelectedProduct(sharedProduct);
     setShowProducts(false);
-    window.location.hash = "accueil";
   }, [products]);
+  useEffect(() => {
+    if (!selectedProduct) return;
+    const previousTitle = document.title;
+    const metadata = [
+      ["meta[property='og:title']", `Mbokamaket | ${selectedProduct.title}`],
+      ["meta[property='og:description']", selectedProduct.description || "Découvrez ce produit sur Mbokamaket."],
+      ["meta[property='og:image']", selectedProduct.image],
+      ["meta[name='twitter:title']", `Mbokamaket | ${selectedProduct.title}`],
+      ["meta[name='twitter:description']", selectedProduct.description || "Découvrez ce produit sur Mbokamaket."],
+      ["meta[name='twitter:image']", selectedProduct.image],
+    ] as const;
+    document.title = `Mbokamaket | ${selectedProduct.title}`;
+    const previousValues = metadata.map(([selector]) => {
+      const element = document.head.querySelector<HTMLMetaElement>(selector);
+      return [element, element?.content || null] as const;
+    });
+    metadata.forEach(([selector, content]) => {
+      if (!content) return;
+      const element = document.head.querySelector<HTMLMetaElement>(selector);
+      if (element) element.content = content;
+    });
+    return () => {
+      document.title = previousTitle;
+      previousValues.forEach(([element, content]) => {
+        if (element && content !== null) element.content = content;
+      });
+    };
+  }, [selectedProduct]);
   const authRoute = window.location.hash === "#connexion" || window.location.hash === "#inscription";
   const passwordResetRoute = new URLSearchParams(window.location.search).get("reset") === "1";
   const openManageProducts = () => {
@@ -2161,11 +2188,7 @@ function PriceDisplay({ product, compact = false }: { product: Product; compact?
 function ProductDetails({ product, isFavorite, onToggleFavorite, onClose, onSellerProducts, onDownload }: { product: Product; isFavorite: boolean; onToggleFavorite: () => void; onClose: () => void; onSellerProducts: () => void; onDownload: () => void }) {
   const whatsappNumber = normalizeWhatsAppNumber(product.phone);
   const productUrl = `${window.location.origin}${window.location.pathname}?produit=${encodeURIComponent(product.id)}`;
-  const whatsappMessage = [
-    `Bonjour, je suis intéressé par votre annonce « ${product.title} » sur Mbokamaket.`,
-    `Voir le produit : ${productUrl}`,
-    product.image ? `Photo du produit : ${product.image}` : "",
-  ].filter(Boolean).join("\n\n");
+  const whatsappMessage = `Bonjour, je suis intéressé par votre annonce « ${product.title} » sur Mbokamaket.\n\nVoir le produit : ${productUrl}`;
   const whatsappUrl = whatsappNumber
     ? `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(whatsappMessage)}`
     : "";
