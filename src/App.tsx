@@ -180,8 +180,10 @@ const DEFAULT_APK_URL = "https://www.dropbox.com/scl/fi/5zdwh2zrttr476fkc50it/Mb
 const getAuthRedirectUrl = () => {
   const configuredUrl = (import.meta.env.VITE_AUTH_REDIRECT_URL as string | undefined)?.trim();
   if (configuredUrl) return configuredUrl;
-  const isMobileDevice = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-  return isMobileDevice ? "mbokamaket://auth/callback" : `${window.location.origin}${window.location.pathname}`;
+  if (typeof window === "undefined") return "http://localhost:5173/";
+  // Web Mobile doit revenir sur la meme URL HTTPS que le navigateur.
+  // Le scheme Expo est fourni par VITE_AUTH_REDIRECT_URL dans l'application native.
+  return `${window.location.origin}${window.location.pathname}`;
 };
 const categories: Category[] = [
   { id: "3", label: "Immobilier", icon: Home },
@@ -414,7 +416,8 @@ function App() {
       );
   };
   useEffect(() => {
-    if (!supabase) return;
+    const client = supabase;
+    if (!client) return;
     const showPendingAuthSuccess = () => {
       const pendingType = localStorage.getItem("mbokamaket-auth-success-pending");
       if (!pendingType) return;
@@ -424,47 +427,89 @@ function App() {
         : "Connexion réussie.");
       window.setTimeout(() => setAuthSuccessMessage(""), 5000);
     };
-    supabase.auth.getSession().then(({ data }) => {
-      const sessionUser = data.session?.user;
-      if (sessionUser) {
-        showPendingAuthSuccess();
-        supabase!.from("public_profiles").select("*").eq("id", sessionUser.id).maybeSingle().then(({ data: profile }) => {
-          const fullName = getProfileDisplayName({
-            ...profile,
-            name: profile?.name || sessionUser.user_metadata?.name,
-            full_name: profile?.full_name || sessionUser.user_metadata?.full_name,
-            business_name: profile?.business_name || sessionUser.user_metadata?.business_name,
-            username: sessionUser.user_metadata?.username || sessionUser.user_metadata?.user_name,
-          }) || (sessionUser.email ? sessionUser.email.split("@")[0] : "");
-          const current = { id: sessionUser.id, email: sessionUser.email, fullName, username: sessionUser.user_metadata?.username || sessionUser.user_metadata?.user_name, role: sessionUser.user_metadata?.role, accountType: sessionUser.user_metadata?.account_type, isVerified: Boolean(profile?.is_verified) };
-          setUser(current);
-          void loadNotices(current);
-        });
+    const applySession = async (session: Awaited<ReturnType<typeof client.auth.getSession>>["data"]["session"]) => {
+      const sessionUser = session?.user;
+      setLoading(false);
+      if (!sessionUser) {
+        setUser(null);
+        return;
       }
-    });
-    const { data: listener } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
+      console.info("[OAuth] Session Supabase disponible", { userId: sessionUser.id });
+      showPendingAuthSuccess();
+      const { data: profile, error: profileError } = await client.from("public_profiles").select("*").eq("id", sessionUser.id).maybeSingle();
+      if (profileError) console.warn("[OAuth] Profil indisponible, session conservee", profileError);
+      const fullName = getProfileDisplayName({
+        ...profile,
+        name: profile?.name || sessionUser.user_metadata?.name,
+        full_name: profile?.full_name || sessionUser.user_metadata?.full_name,
+        business_name: profile?.business_name || sessionUser.user_metadata?.business_name,
+        username: sessionUser.user_metadata?.username || sessionUser.user_metadata?.user_name,
+      }) || (sessionUser.email ? sessionUser.email.split("@")[0] : "");
+      const current = { id: sessionUser.id, email: sessionUser.email, fullName, username: sessionUser.user_metadata?.username || sessionUser.user_metadata?.user_name, role: sessionUser.user_metadata?.role, accountType: sessionUser.user_metadata?.account_type, isVerified: Boolean(profile?.is_verified) };
+      setUser(current);
+      setAuthOpen(false);
+      if (window.location.hash === "#connexion" || window.location.hash === "#inscription") window.location.hash = "accueil";
+      void loadNotices(current);
+    };
+    const finishOAuthCallback = async () => {
+      const callbackUrl = new URL(window.location.href);
+      const hashParams = new URLSearchParams(callbackUrl.hash.replace(/^#/, ""));
+      const callbackError = callbackUrl.searchParams.get("error_description")
+        || callbackUrl.searchParams.get("error")
+        || hashParams.get("error_description")
+        || hashParams.get("error");
+      const code = callbackUrl.searchParams.get("code");
+      const hasAuthResponse = Boolean(code || hashParams.get("access_token") || callbackError);
+      if (!hasAuthResponse) return;
+      console.info("[OAuth] Callback recu", { hasCode: Boolean(code), hasHashToken: Boolean(hashParams.get("access_token")), hasError: Boolean(callbackError) });
+      setLoading(false);
+      if (callbackError) {
+        console.error("[OAuth] Echec du fournisseur", callbackError);
+        setError(callbackError);
+        setAuthOpen(false);
+        return;
+      }
+      if (code) {
+        console.info("[OAuth] Echange du code PKCE en cours");
+        const { error: exchangeError } = await client.auth.exchangeCodeForSession(code);
+        if (exchangeError) {
+          console.error("[OAuth] Echec de exchangeCodeForSession", exchangeError);
+          setError(exchangeError.message);
+          setLoading(false);
+          return;
+        }
+        console.info("[OAuth] Code PKCE echange avec succes");
+        window.history.replaceState({}, document.title, `${window.location.pathname}${window.location.hash}`);
+      }
+    };
+    void finishOAuthCallback()
+      .then(() => client.auth.getSession())
+      .then(({ data, error: sessionError }) => {
+        if (sessionError) {
+          console.error("[OAuth] Impossible de recuperer la session", sessionError);
+          setError(sessionError.message);
+          return;
+        }
+        return applySession(data.session);
+      })
+      .catch((callbackError: unknown) => {
+        console.error("[OAuth] Erreur inattendue du callback", callbackError);
+        setError(callbackError instanceof Error ? callbackError.message : "La connexion a echoue.");
+      })
+      .finally(() => setLoading(false));
+    const { data: listener } = client.auth.onAuthStateChange(
+      (event, session) => {
+        console.info("[OAuth] Evenement Supabase", event, { hasSession: Boolean(session) });
         const sessionUser = session?.user;
+        setLoading(false);
         if (!sessionUser) {
           setUser(null);
           return;
         }
-        showPendingAuthSuccess();
-        supabase!.from("public_profiles").select("*").eq("id", sessionUser.id).maybeSingle().then(({ data: profile }) => {
-          const fullName = getProfileDisplayName({
-            ...profile,
-            name: profile?.name || sessionUser.user_metadata?.name,
-            full_name: profile?.full_name || sessionUser.user_metadata?.full_name,
-            business_name: profile?.business_name || sessionUser.user_metadata?.business_name,
-            username: sessionUser.user_metadata?.username || sessionUser.user_metadata?.user_name,
-          }) || (sessionUser.email ? sessionUser.email.split("@")[0] : "");
-          const current = { id: sessionUser.id, email: sessionUser.email, fullName, username: sessionUser.user_metadata?.username || sessionUser.user_metadata?.user_name, role: sessionUser.user_metadata?.role, accountType: sessionUser.user_metadata?.account_type, isVerified: Boolean(profile?.is_verified) };
-          setUser(current);
-          void loadNotices(current);
-        });
+        void applySession(session);
       },
     );
-    void loadProducts();
+    void loadProducts().finally(() => setLoading(false));
     return () => listener.subscription.unsubscribe();
   }, []);
   useEffect(() => {
@@ -1582,11 +1627,15 @@ function AuthModal({ initialMode, onClose }: { initialMode: "login" | "signup"; 
     }
     localStorage.setItem("mbokamaket-auth-success-pending", "login");
     setBusy(true);
+    const redirectTo = getAuthRedirectUrl();
+    console.info("[OAuth] Demarrage de la connexion", { provider, redirectTo });
     const { error: authError } = await supabase.auth.signInWithOAuth({
       provider,
-      options: { redirectTo: getAuthRedirectUrl() },
+      options: { redirectTo },
     });
     if (authError) {
+      console.error("[OAuth] Impossible de demarrer la connexion", authError);
+      localStorage.removeItem("mbokamaket-auth-success-pending");
       setBusy(false);
       setError(authError.message);
     }
