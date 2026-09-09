@@ -185,6 +185,18 @@ const getAuthRedirectUrl = () => {
   // Le scheme Expo est fourni par VITE_AUTH_REDIRECT_URL dans l'application native.
   return `${window.location.origin}${window.location.pathname}`;
 };
+
+const getPasswordResetRedirectUrl = () => {
+  const baseUrl = getAuthRedirectUrl();
+  try {
+    const url = new URL(baseUrl);
+    url.searchParams.set("reset", "1");
+    return url.toString();
+  } catch {
+    const separator = baseUrl.includes("?") ? "&" : "?";
+    return `${baseUrl}${separator}reset=1`;
+  }
+};
 const categories: Category[] = [
   { id: "3", label: "Immobilier", icon: Home },
   { id: "6", label: "Smartphone", icon: Smartphone },
@@ -1597,8 +1609,9 @@ function AuthModal({ initialMode, onClose }: { initialMode: "login" | "signup"; 
     }
     setBusy(true);
     if (mode === "reset") {
+      const redirectTo = getPasswordResetRedirectUrl();
       const { error: authError } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}${window.location.pathname}?reset=1`,
+        redirectTo,
       });
       setBusy(false);
       if (authError) setError(authError.message);
