@@ -19,6 +19,7 @@ import {
   MapPin,
   Menu,
   Package,
+  Phone,
   Plus,
   Search,
   ShieldCheck,
@@ -1500,6 +1501,19 @@ function Footer({
   visitorCount: number | null;
   onOpenProducts: () => void;
 }) {
+  const handleContactSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!contactEmail) return;
+
+    const formData = new FormData(event.currentTarget);
+    const name = String(formData.get("name") || "").trim();
+    const email = String(formData.get("email") || "").trim();
+    const message = String(formData.get("message") || "").trim();
+    const subject = encodeURIComponent(`Contact Mbokamaket - ${name}`);
+    const body = encodeURIComponent(`Nom : ${name}\nE-mail : ${email}\n\n${message}`);
+    window.location.href = `mailto:${contactEmail}?subject=${subject}&body=${body}`;
+  };
+
   return (
     <footer className="border-t border-[#0b1e55] bg-[#102a68] text-white">
       <div className="mx-auto grid max-w-7xl gap-8 px-4 py-8 sm:px-6 md:grid-cols-[1fr_1.15fr_1fr] md:gap-12 md:py-12">
@@ -1518,7 +1532,7 @@ function Footer({
           </div>
         </div>
         <div><h2 className="font-bold">Navigation</h2><div className="mt-3 grid gap-1 text-sm text-blue-100"><a href="#accueil" className="flex min-h-10 items-center hover:text-white">Accueil</a><a href="#produits" onClick={(event) => { event.preventDefault(); onOpenProducts(); }} className="flex min-h-10 items-center hover:text-white">Produits</a><a href="#telechargement" className="flex min-h-10 items-center hover:text-white">Télécharger l’application</a><a href="/terms.html" className="flex min-h-10 items-center hover:text-white">Conditions d’utilisation</a><a href="/privacy-policy.html" className="flex min-h-10 items-center hover:text-white">Politique de confidentialité</a></div></div>
-        <div><h2 className="font-bold">Nous contacter</h2><form className="mt-4 grid gap-3" action={contactEmail ? `mailto:${contactEmail}` : undefined} method="post" encType="text/plain"><input required name="name" placeholder="Votre nom" className="input w-full border-white/20 bg-white/10 text-white placeholder:text-blue-200" /><input required type="email" name="email" placeholder="Votre email" className="input w-full border-white/20 bg-white/10 text-white placeholder:text-blue-200" /><textarea required name="message" placeholder="Votre message" className="textarea min-h-24 w-full border-white/20 bg-white/10 text-white placeholder:text-blue-200" /><button type="submit" disabled={!contactEmail} className="btn w-full border-0 bg-white text-[#102a68] hover:bg-blue-50 disabled:opacity-50">Envoyer le message</button></form></div>
+        <div><h2 className="font-bold">Nous contacter</h2><a href="tel:+243891985370" className="mt-3 inline-flex items-center gap-2 text-sm text-blue-100 hover:text-white"><Phone size={16} />+243 891 985 370</a><a href="https://wa.me/243891985370" target="_blank" rel="noreferrer" className="mt-2 block text-sm text-blue-100 hover:text-white">WhatsApp</a><form className="mt-4 grid gap-3" onSubmit={handleContactSubmit}><input required name="name" autoComplete="name" placeholder="Votre nom" className="input w-full border-white/20 bg-white/10 text-white placeholder:text-blue-200" /><input required type="email" name="email" autoComplete="email" placeholder="Votre email" className="input w-full border-white/20 bg-white/10 text-white placeholder:text-blue-200" /><textarea required name="message" autoComplete="off" placeholder="Votre message" className="textarea min-h-24 w-full border-white/20 bg-white/10 text-white placeholder:text-blue-200" /><button type="submit" disabled={!contactEmail} className="btn w-full border-0 bg-white text-[#102a68] hover:bg-blue-50 disabled:opacity-50">Envoyer le message</button></form></div>
       </div>
       <div className="flex flex-col items-center justify-center gap-3 border-t border-white/15 px-4 py-5 text-center text-xs text-blue-200 sm:flex-row">
         <span>© {new Date().getFullYear()} Mbokamaket. Tous droits réservés.</span>
