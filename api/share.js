@@ -1,5 +1,5 @@
-const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://ryxrnpomqxkhggelduwj.supabase.co';
+const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_wm4Fn_mr5UQnyKKlbtYhiA_PXjfODqz';
 const SITE_URL = 'https://www.mbokamaket.com';
 
 const escapeHtml = (value) => String(value ?? '')
@@ -18,12 +18,17 @@ const firstImage = (value) => {
 };
 
 const querySupabase = async (table, id, columns) => {
-  const response = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=${encodeURIComponent(columns)}&id=eq.${encodeURIComponent(id)}&limit=1`, {
-    headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
-  });
-  if (!response.ok) return null;
-  const rows = await response.json();
-  return rows[0] || null;
+  try {
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=${encodeURIComponent(columns)}&id=eq.${encodeURIComponent(id)}&limit=1`, {
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
+    });
+    if (!response.ok) return null;
+    const rows = await response.json();
+    return rows[0] || null;
+  } catch (error) {
+    console.error('[share] Supabase request failed', error);
+    return null;
+  }
 };
 
 const render = ({ title, description, image, canonical, content }) => {
@@ -34,9 +39,11 @@ const render = ({ title, description, image, canonical, content }) => {
 };
 
 module.exports = async (request, response) => {
-  const type = request.query.type;
-  const id = request.query.id;
-  if (!id || (type !== 'product' && type !== 'profile')) return response.status(404).send('Lien invalide.');
+  try {
+    const query = request.query || {};
+    const type = Array.isArray(query.type) ? query.type[0] : query.type;
+    const id = Array.isArray(query.id) ? query.id[0] : query.id;
+    if (!id || (type !== 'product' && type !== 'profile')) return response.status(404).send('Lien invalide.');
 
   if (type === 'product') {
     const product = await querySupabase('produits', id, 'id,title,description,price,currency,images,location');
@@ -49,14 +56,18 @@ module.exports = async (request, response) => {
     const price = Number(product.price || 0).toLocaleString('fr-FR');
     const currency = product.currency === 'USD' ? '$' : product.currency || 'FC';
     const content = `${image ? `<img class="cover" src="${escapeHtml(image)}" alt="${escapeHtml(title)}">` : ''}<div class="body"><div class="eyebrow">Produit MbokaMarket</div><h1 class="title">${escapeHtml(title)}</h1><p class="description">${escapeHtml(description)}</p><p><strong>${escapeHtml(price)} ${escapeHtml(currency)}</strong>${product.location ? ` · ${escapeHtml(product.location)}` : ''}</p><a class="button" href="${appUrl}">Ouvrir dans l’application</a><a class="button secondary" href="/?produit=${encodeURIComponent(id)}">Voir sur le site</a></div>`;
-    return response.status(200).setHeader('Content-Type', 'text/html; charset=utf-8').send(render({ title: `${title} | MbokaMarket`, description, image, canonical, content }));
+      return response.status(200).setHeader('Content-Type', 'text/html; charset=utf-8').send(render({ title: `${title} | MbokaMarket`, description, image, canonical, content }));
   }
 
-  const profile = await querySupabase('public_profiles', id, 'id,name,business_name,username,bio,avatar');
-  if (!profile) return response.status(404).send('Profil introuvable.');
-  const name = profile.business_name || profile.name || 'Profil MbokaMarket';
-  const description = String(profile.bio || `Découvrez le profil de ${name} sur MbokaMarket.`).slice(0, 240);
-  const canonical = `${SITE_URL}/profile/${encodeURIComponent(id)}`;
-  const content = `${profile.avatar ? `<img class="cover" src="${escapeHtml(profile.avatar)}" alt="${escapeHtml(name)}">` : ''}<div class="body"><div class="eyebrow">Profil MbokaMarket</div><h1 class="title">${escapeHtml(name)}</h1>${profile.username ? `<p class="description">@${escapeHtml(profile.username)}</p>` : ''}<p class="description">${escapeHtml(description)}</p><a class="button" href="mbokamaket://profile/${encodeURIComponent(id)}">Ouvrir dans l’application</a><a class="button secondary" href="/?profil=${encodeURIComponent(id)}">Voir sur le site</a></div>`;
-  return response.status(200).setHeader('Content-Type', 'text/html; charset=utf-8').send(render({ title: `${name} | MbokaMarket`, description, image: profile.avatar, canonical, content }));
+    const profile = await querySupabase('public_profiles', id, 'id,name,business_name,username,bio,avatar');
+    if (!profile) return response.status(404).send('Profil introuvable.');
+    const name = profile.business_name || profile.name || 'Profil MbokaMarket';
+    const description = String(profile.bio || `Découvrez le profil de ${name} sur MbokaMarket.`).slice(0, 240);
+    const canonical = `${SITE_URL}/profile/${encodeURIComponent(id)}`;
+    const content = `${profile.avatar ? `<img class="cover" src="${escapeHtml(profile.avatar)}" alt="${escapeHtml(name)}">` : ''}<div class="body"><div class="eyebrow">Profil MbokaMarket</div><h1 class="title">${escapeHtml(name)}</h1>${profile.username ? `<p class="description">@${escapeHtml(profile.username)}</p>` : ''}<p class="description">${escapeHtml(description)}</p><a class="button" href="mbokamaket://profile/${encodeURIComponent(id)}">Ouvrir dans l’application</a><a class="button secondary" href="/?profil=${encodeURIComponent(id)}">Voir sur le site</a></div>`;
+    return response.status(200).setHeader('Content-Type', 'text/html; charset=utf-8').send(render({ title: `${name} | MbokaMarket`, description, image: profile.avatar, canonical, content }));
+  } catch (error) {
+    console.error('[share] handler failed', error);
+    return response.status(500).send('Le lien de partage est temporairement indisponible.');
+  }
 };
