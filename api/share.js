@@ -68,7 +68,8 @@ export default async function handler(request, response) {
     const appUrl = `mbokamaket://product/${encodeURIComponent(id)}`;
     const price = Number(product.price || 0).toLocaleString('fr-FR');
     const currency = product.currency === 'USD' ? '$' : product.currency || 'FC';
-    const content = `${image ? `<img class="cover" src="${escapeHtml(image)}" alt="${escapeHtml(title)}">` : ''}<div class="body"><div class="eyebrow">Produit MbokaMarket</div><h1 class="title">${escapeHtml(title)}</h1><p class="description">${escapeHtml(description)}</p><p><strong>${escapeHtml(price)} ${escapeHtml(currency)}</strong>${product.location ? ` · ${escapeHtml(product.location)}` : ''}</p><a class="button" href="${appUrl}">Ouvrir dans l’application</a><a class="button secondary" href="/?produit=${encodeURIComponent(id)}">Voir sur le site</a></div>`;
+    const siteProductUrl = `${SITE_URL}/?produit=${encodeURIComponent(id)}`;
+    const content = `${image ? `<img class="cover" src="${escapeHtml(image)}" alt="${escapeHtml(title)}">` : ''}<div class="body"><div class="eyebrow">Produit MbokaMarket</div><h1 class="title">${escapeHtml(title)}</h1><p class="description">${escapeHtml(description)}</p><p><strong>${escapeHtml(price)} ${escapeHtml(currency)}</strong>${product.location ? ` · ${escapeHtml(product.location)}` : ''}</p><a class="button" href="${escapeHtml(appUrl)}">Ouvrir dans l’application</a><a class="button secondary" href="${escapeHtml(siteProductUrl)}">Voir le détail sur le site</a></div>`;
       sendHtml(response, 200, render({ title: `${title} | MbokaMarket`, description, image, canonical, content }));
       return;
   }
@@ -81,7 +82,8 @@ export default async function handler(request, response) {
     const name = profile.business_name || profile.name || 'Profil MbokaMarket';
     const description = String(profile.bio || `Découvrez le profil de ${name} sur MbokaMarket.`).slice(0, 240);
     const canonical = `${SITE_URL}/profile/${encodeURIComponent(id)}`;
-    const content = `${profile.avatar ? `<img class="cover" src="${escapeHtml(profile.avatar)}" alt="${escapeHtml(name)}">` : ''}<div class="body"><div class="eyebrow">Profil MbokaMarket</div><h1 class="title">${escapeHtml(name)}</h1>${profile.username ? `<p class="description">@${escapeHtml(profile.username)}</p>` : ''}<p class="description">${escapeHtml(description)}</p><a class="button" href="mbokamaket://profile/${encodeURIComponent(id)}">Ouvrir dans l’application</a><a class="button secondary" href="/?profil=${encodeURIComponent(id)}">Voir sur le site</a></div>`;
+    const siteProfileUrl = `${SITE_URL}/?profil=${encodeURIComponent(id)}`;
+    const content = `${profile.avatar ? `<img class="cover" src="${escapeHtml(profile.avatar)}" alt="${escapeHtml(name)}">` : ''}<div class="body"><div class="eyebrow">Profil MbokaMarket</div><h1 class="title">${escapeHtml(name)}</h1>${profile.username ? `<p class="description">@${escapeHtml(profile.username)}</p>` : ''}<p class="description">${escapeHtml(description)}</p><a class="button" href="mbokamaket://profile/${encodeURIComponent(id)}">Ouvrir dans l’application</a><a class="button secondary" href="${escapeHtml(siteProfileUrl)}">Voir le profil sur le site</a></div>`;
     sendHtml(response, 200, render({ title: `${name} | MbokaMarket`, description, image: profile.avatar, canonical, content }));
   } catch (error) {
     console.error('[share] handler failed', error);
