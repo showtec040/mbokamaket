@@ -1,0 +1,6 @@
+{
+  "rewrites": [
+    { "source": "/product/:id", "destination": "/api/share?type=product&id=:id" },
+    { "source": "/profile/:id", "destination": "/api/share?type=profile&id=:id" }
+  ]
+}

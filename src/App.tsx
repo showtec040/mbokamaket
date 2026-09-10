@@ -675,21 +675,25 @@ function App() {
   }, []);
   useEffect(() => {
     const productId = new URLSearchParams(window.location.search).get("produit");
-    if (!productId || products.length === 0) return;
-    const sharedProduct = products.find((product) => product.id === productId);
+    const pathMatch = window.location.pathname.match(/^\/product\/([^/]+)\/?$/i);
+    const sharedProductId = productId || (pathMatch ? decodeURIComponent(pathMatch[1]) : "");
+    if (!sharedProductId || products.length === 0) return;
+    const sharedProduct = products.find((product) => product.id === sharedProductId);
     if (!sharedProduct) return;
     setSelectedProduct(sharedProduct);
     setShowProducts(false);
   }, [products]);
   useEffect(() => {
     const profileId = new URLSearchParams(window.location.search).get("profil");
-    if (!profileId || products.length === 0) return;
-    const sellerProduct = products.find((product) => product.sellerId === profileId);
+    const pathMatch = window.location.pathname.match(/^\/profile\/([^/]+)\/?$/i);
+    const sharedProfileId = profileId || (pathMatch ? decodeURIComponent(pathMatch[1]) : "");
+    if (!sharedProfileId || products.length === 0) return;
+    const sellerProduct = products.find((product) => product.sellerId === sharedProfileId);
     if (!sellerProduct) return;
     setSelectedProduct(null);
     setQuery("");
     setCategory("Toutes");
-    setSellerFilter({ id: profileId, name: sellerProduct.seller });
+    setSellerFilter({ id: sharedProfileId, name: sellerProduct.seller });
     setShowProducts(true);
   }, [products]);
   useEffect(() => {
@@ -2266,8 +2270,8 @@ function PriceDisplay({ product, compact = false }: { product: Product; compact?
 
 function ProductDetails({ product, isFavorite, onToggleFavorite, onClose, onSellerProducts, onDownload }: { product: Product; isFavorite: boolean; onToggleFavorite: () => void; onClose: () => void; onSellerProducts: () => void; onDownload: () => void }) {
   const whatsappNumber = normalizeWhatsAppNumber(product.phone);
-  const productUrl = `${window.location.origin}${window.location.pathname}?produit=${encodeURIComponent(product.id)}`;
-  const profileUrl = `${window.location.origin}${window.location.pathname}?profil=${encodeURIComponent(product.sellerId)}`;
+  const productUrl = `${window.location.origin}/product/${encodeURIComponent(product.id)}`;
+  const profileUrl = `${window.location.origin}/profile/${encodeURIComponent(product.sellerId)}`;
   const whatsappMessage = `Bonjour, je suis intéressé par votre annonce « ${product.title} » sur Mbokamaket.\n\nVoir le produit : ${productUrl}`;
   const whatsappUrl = whatsappNumber
     ? `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(whatsappMessage)}`
