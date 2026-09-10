@@ -2269,6 +2269,9 @@ function PriceDisplay({ product, compact = false }: { product: Product; compact?
 }
 
 function ProductDetails({ product, isFavorite, onToggleFavorite, onClose, onSellerProducts, onDownload }: { product: Product; isFavorite: boolean; onToggleFavorite: () => void; onClose: () => void; onSellerProducts: () => void; onDownload: () => void }) {
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [followBusy, setFollowBusy] = useState(false);
   const whatsappNumber = normalizeWhatsAppNumber(product.phone);
   const productUrl = `${window.location.origin}/product/${encodeURIComponent(product.id)}`;
   const profileUrl = `${window.location.origin}/profile/${encodeURIComponent(product.sellerId)}`;
@@ -2279,6 +2282,53 @@ function ProductDetails({ product, isFavorite, onToggleFavorite, onClose, onSell
   const profileShareUrl = whatsappNumber
     ? `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(`Découvrez le profil de ${product.seller} sur Mbokamaket : ${profileUrl}`)}`
     : profileUrl;
+
+  useEffect(() => {
+    let mounted = true;
+    const loadFollowState = async () => {
+      if (!supabase || !product.sellerId) {
+        setIsFollowing(false);
+        return;
+      }
+      const { data: authData } = await supabase.auth.getUser();
+      const currentUserId = authData.user?.id;
+      if (mounted) setCurrentUserId(currentUserId || null);
+      if (!currentUserId || currentUserId === product.sellerId) {
+        setIsFollowing(false);
+        return;
+      }
+      const { data, error } = await supabase
+        .from("follows")
+        .select("id")
+        .eq("follower_id", currentUserId)
+        .eq("following_id", product.sellerId)
+        .maybeSingle();
+      if (mounted && !error) setIsFollowing(Boolean(data));
+    };
+    void loadFollowState();
+    return () => { mounted = false; };
+  }, [product.sellerId]);
+
+  const toggleFollow = async () => {
+    if (!supabase) return;
+    const { data: authData } = await supabase.auth.getUser();
+    const currentUserId = authData.user?.id;
+    if (!currentUserId) {
+      window.alert("Connectez-vous pour suivre ce compte.");
+      return;
+    }
+    if (currentUserId === product.sellerId) return;
+    setFollowBusy(true);
+    const result = isFollowing
+      ? await supabase.from("follows").delete().eq("follower_id", currentUserId).eq("following_id", product.sellerId)
+      : await supabase.from("follows").insert({ follower_id: currentUserId, following_id: product.sellerId });
+    setFollowBusy(false);
+    if (result.error) {
+      window.alert(result.error.message || "Impossible de modifier le suivi.");
+      return;
+    }
+    setIsFollowing(!isFollowing);
+  };
   return (
       <section className="product-details-page mt-6 overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm sm:mt-10">
         <div className="flex items-center justify-between border-b border-slate-100 p-5">
@@ -2320,6 +2370,11 @@ function ProductDetails({ product, isFavorite, onToggleFavorite, onClose, onSell
                 </div>
               </div>
               <button onClick={onSellerProducts} className="btn btn-outline mt-4 w-full">Voir ses produits</button>
+              {currentUserId !== product.sellerId ? (
+                <button onClick={() => void toggleFollow()} disabled={followBusy} className="btn mt-3 w-full border-[#143ca8] text-[#143ca8]">
+                  {followBusy ? "Mise à jour..." : isFollowing ? "Ne plus suivre" : "Suivre ce compte"}
+                </button>
+              ) : null}
               <a href={profileShareUrl} target="_blank" rel="noreferrer" className="btn btn-outline mt-3 w-full">Partager le profil</a>
               {whatsappUrl ? <a href={whatsappUrl} target="_blank" rel="noreferrer" className="btn mt-3 w-full bg-[#25D366] text-white">Contacter sur WhatsApp</a> : null}
               <a href="#telechargement" onClick={onDownload} className="btn btn-primary mt-3 w-full bg-[#143ca8]">Télécharger l’application</a>
