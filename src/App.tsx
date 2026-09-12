@@ -178,6 +178,26 @@ type Row = {
 
 const PRODUCT_IMAGES_BUCKET = "product-images";
 const DEFAULT_APK_URL = "https://www.dropbox.com/scl/fi/5zdwh2zrttr476fkc50it/MbokaMarket-v1.0.0.apk.apk?rlkey=6t6ead4jxe465hfcy87plwx9s&st=hds9drrx&dl=1";
+const isMobileBrowser = () => /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || "");
+const getAppDeepLinkUrl = (path: string, params?: Record<string, string | undefined>) => {
+  const url = new URL("mbokamaket://" + path.replace(/^\/+/, ""));
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value && value.trim()) url.searchParams.set(key, value);
+  });
+  return url.toString();
+};
+const openAppIfInstalled = (path: string, params?: Record<string, string | undefined>) => {
+  if (!isMobileBrowser() || typeof window === "undefined") return false;
+  const webFallback = window.location.href;
+  const appUrl = getAppDeepLinkUrl(path, params);
+  const fallbackTimer = window.setTimeout(() => {
+    window.location.href = webFallback;
+  }, 1200);
+
+  window.location.href = appUrl;
+  window.setTimeout(() => window.clearTimeout(fallbackTimer), 1600);
+  return true;
+};
 const getAuthRedirectUrl = () => {
   const configuredUrl = (import.meta.env.VITE_AUTH_REDIRECT_URL as string | undefined)?.trim();
   if (configuredUrl) return configuredUrl;
@@ -727,6 +747,29 @@ function App() {
   }, [selectedProduct]);
   const authRoute = window.location.hash === "#connexion" || window.location.hash === "#inscription";
   const passwordResetRoute = new URLSearchParams(window.location.search).get("reset") === "1";
+
+  useEffect(() => {
+    if (!isMobileBrowser()) return;
+    const href = new URL(window.location.href);
+    const productId = href.searchParams.get("produit") || href.pathname.match(/^\/product\/([^/]+)\/?>$/i)?.[1];
+    const profileId = href.searchParams.get("profil") || href.pathname.match(/^\/profile\/([^/]+)\/?>$/i)?.[1];
+    const hasCallbackCode = Boolean(href.searchParams.get("code") || href.searchParams.get("access_token") || href.searchParams.get("error"));
+
+    if (productId) {
+      openAppIfInstalled(`/product/${encodeURIComponent(productId)}`);
+      return;
+    }
+
+    if (profileId) {
+      openAppIfInstalled(`/profile/${encodeURIComponent(profileId)}`);
+      return;
+    }
+
+    if (href.pathname === "/auth/callback" || hasCallbackCode || href.searchParams.get("reset") === "1") {
+      openAppIfInstalled("/auth/callback", Object.fromEntries(href.searchParams.entries()));
+    }
+  }, []);
+
   const openManageProducts = () => {
     setProfileOpen(false);
     setProfileManagementOpen(false);
