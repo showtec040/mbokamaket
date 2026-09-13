@@ -152,6 +152,23 @@ type Notice = {
   read: boolean;
   createdAt: string;
 };
+
+const isSentMessageNotification = (notice: Pick<Notice, "title" | "message">) => {
+  const text = `${notice.title ?? ""} ${notice.message ?? ""}`.toLowerCase();
+  const blockedPatterns = [
+    "message envoyé",
+    "message envoye",
+    "message sent",
+    "message envoyé à",
+    "message envoye a",
+    "votre message",
+    "envoyer un message",
+    "sent you a message",
+    "you sent",
+    "sent to",
+  ];
+  return blockedPatterns.some((pattern) => text.includes(pattern));
+};
 type Row = {
   id?: string | number;
   title?: string;
@@ -439,13 +456,15 @@ function App() {
     if (loadError) setError(loadError.message);
     else
       setNotices(
-        (data || []).map((item) => ({
-          id: String(item.id),
-          title: item.title || "Notification",
-          message: item.message || "",
-          read: item.read === true,
-          createdAt: item.created_at,
-        })),
+        (data || [])
+          .map((item) => ({
+            id: String(item.id),
+            title: item.title || "Notification",
+            message: item.message || "",
+            read: item.read === true,
+            createdAt: item.created_at,
+          }))
+          .filter((item) => !isSentMessageNotification(item)),
       );
   };
   useEffect(() => {
@@ -598,7 +617,8 @@ function App() {
       }) : [],
     [products, query, category, sellerFilter, showProducts],
   );
-  const unreadNoticeCount = notices.filter((item) => item.read === false).length;
+  const visibleNotices = notices.filter((item) => !isSentMessageNotification(item));
+  const unreadNoticeCount = visibleNotices.filter((item) => item.read === false).length;
   const openNotice = async (notice: Notice) => {
     setSelectedNotice({ ...notice, read: true });
     setNotices((current) => current.map((item) => item.id === notice.id ? { ...item, read: true } : item));
@@ -668,10 +688,10 @@ function App() {
   };
   useEffect(() => {
     if (!noticeOpen) return;
-    if (!selectedNotice && notices.length > 0) {
-      setSelectedNotice(notices[0]);
+    if (!selectedNotice && visibleNotices.length > 0) {
+      setSelectedNotice(visibleNotices[0]);
     }
-  }, [noticeOpen, notices, selectedNotice]);
+  }, [noticeOpen, selectedNotice, visibleNotices]);
   const openAuth = (authMode: "login" | "signup" = "login") => {
     setProfileOpen(false);
     setAuthOpen(true);
@@ -1039,33 +1059,33 @@ function App() {
             onClick={goHome}
           >
             <section
-              className="w-full max-w-[22rem] overflow-hidden rounded-[1.4rem] border border-slate-200 bg-white shadow-2xl ring-1 ring-slate-200 sm:max-w-md"
+              className="w-full max-w-[18rem] overflow-hidden rounded-[1.1rem] border border-slate-200 bg-white shadow-xl ring-1 ring-slate-200 sm:max-w-[20rem]"
               onClick={(event) => event.stopPropagation()}
             >
-              <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+              <div className="flex items-center justify-between border-b border-slate-100 px-2.5 py-2.5 sm:px-3">
                 <div className="min-w-0">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#143ca8]">Notifications</p>
-                  <h2 className="mt-1 truncate text-lg font-bold text-slate-900">Vos notifications</h2>
+                  <p className="text-[8px] font-bold uppercase tracking-[0.2em] text-[#143ca8] sm:text-[9px]">Notifications</p>
+                  <h2 className="mt-1 truncate text-sm font-bold text-slate-900 sm:text-base">Vos notifications</h2>
                 </div>
                 <button
                   type="button"
                   onClick={goHome}
-                  className="btn btn-ghost btn-circle btn-sm"
+                  className="btn btn-ghost btn-circle btn-xs"
                   aria-label="Fermer les notifications"
                 >
-                  <X size={16} />
+                  <X size={14} />
                 </button>
               </div>
 
-              <div className="max-h-[58vh] overflow-y-auto p-3 sm:max-h-[62vh]">
-                {notices.length === 0 ? (
+              <div className="max-h-[48vh] overflow-y-auto p-2.5 sm:max-h-[52vh]">
+                {visibleNotices.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-12 text-center text-slate-500">
                     <Bell className="mb-3 text-slate-300" size={32} />
                     <p className="text-sm">Aucune notification pour le moment.</p>
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {notices.map((item) => (
+                    {visibleNotices.map((item) => (
                       <button
                         type="button"
                         key={item.id}
