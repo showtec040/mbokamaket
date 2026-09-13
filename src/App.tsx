@@ -207,11 +207,26 @@ const openAppIfInstalled = (path: string, params?: Record<string, string | undef
   if (!isMobileBrowser() || typeof window === "undefined") return false;
   const webFallback = window.location.href;
   const appUrl = getAppDeepLinkUrl(path, params);
+
+  try {
+    const fallbackFrame = document.createElement("iframe");
+    fallbackFrame.style.display = "none";
+    fallbackFrame.src = appUrl;
+    document.body.appendChild(fallbackFrame);
+    window.setTimeout(() => {
+      if (fallbackFrame.parentNode) fallbackFrame.parentNode.removeChild(fallbackFrame);
+    }, 1200);
+  } catch {
+    // Ignore iframe issues and keep the native app redirect as the primary action.
+  }
+
   const fallbackTimer = window.setTimeout(() => {
-    window.location.href = webFallback;
+    if (document.visibilityState === "visible") {
+      window.location.href = webFallback;
+    }
   }, 1200);
 
-  window.location.href = appUrl;
+  window.location.replace(appUrl);
   window.setTimeout(() => window.clearTimeout(fallbackTimer), 1600);
   return true;
 };
