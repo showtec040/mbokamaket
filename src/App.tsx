@@ -1035,11 +1035,11 @@ function App() {
         )}
         {!publishOpen && noticeOpen && (
           <div
-            className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/30 p-3 backdrop-blur-[2px] sm:items-center"
+            className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/30 p-2 backdrop-blur-[2px] sm:items-center sm:p-4"
             onClick={goHome}
           >
             <section
-              className="w-full max-w-md overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white shadow-2xl ring-1 ring-slate-200"
+              className="w-full max-w-[22rem] overflow-hidden rounded-[1.4rem] border border-slate-200 bg-white shadow-2xl ring-1 ring-slate-200 sm:max-w-md"
               onClick={(event) => event.stopPropagation()}
             >
               <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
@@ -1057,7 +1057,7 @@ function App() {
                 </button>
               </div>
 
-              <div className="max-h-[70vh] overflow-y-auto p-3">
+              <div className="max-h-[58vh] overflow-y-auto p-3 sm:max-h-[62vh]">
                 {notices.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-12 text-center text-slate-500">
                     <Bell className="mb-3 text-slate-300" size={32} />
