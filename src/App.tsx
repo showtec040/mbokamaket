@@ -666,6 +666,12 @@ function App() {
     setNoticeOpen(true);
     window.location.hash = "notifications";
   };
+  useEffect(() => {
+    if (!noticeOpen) return;
+    if (!selectedNotice && notices.length > 0) {
+      setSelectedNotice(notices[0]);
+    }
+  }, [noticeOpen, notices, selectedNotice]);
   const openAuth = (authMode: "login" | "signup" = "login") => {
     setProfileOpen(false);
     setAuthOpen(true);
@@ -1028,49 +1034,66 @@ function App() {
           />
         )}
         {!publishOpen && noticeOpen && (
-          <section className="notification-page mt-6 rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm sm:mt-10 sm:p-8">
-              <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-5">
-              <div>
-                <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#143ca8]">Centre de notifications</p>
-                <h1 className="mt-2 font-display text-3xl font-bold">Vos notifications</h1>
-                <p className="mt-2 text-sm text-slate-500">Consultez les informations importantes de votre compte.</p>
-              </div>
-              <button onClick={goHome} className="btn btn-ghost btn-sm shrink-0">Retour à l’accueil</button>
-            </div>
-            {notices.length === 0 ? (
-              <div className="py-16 text-center text-slate-500">
-                <Bell className="mx-auto mb-3 text-slate-300" size={36} />
-                <p>Aucune notification pour le moment.</p>
-              </div>
-            ) : (
-              <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,.7fr)]">
-                <div className="space-y-3">
-                  {notices.map((item) => (
-                    <button
-                      type="button"
-                      key={item.id}
-                      onClick={() => void openNotice(item)}
-                      className={`w-full rounded-2xl border p-4 text-left transition hover:-translate-y-0.5 hover:shadow-md ${selectedNotice?.id === item.id ? "border-[#143ca8] ring-2 ring-[#dbe5ff]" : "border-slate-200"} ${item.read ? "bg-white" : "border-blue-200 bg-blue-50/60"}`}
-                    >
-                      <span className="flex items-center justify-between gap-3"><strong>{item.title}</strong>{!item.read && <span className="badge badge-primary badge-sm">Nouveau</span>}</span>
-                      <p className="mt-2 line-clamp-2 text-sm text-slate-600">{item.message || "Aucun message"}</p>
-                      <p className="mt-3 text-xs text-slate-400">{new Date(item.createdAt).toLocaleString("fr-FR")}</p>
-                    </button>
-                  ))}
+          <div
+            className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/30 p-3 backdrop-blur-[2px] sm:items-center"
+            onClick={goHome}
+          >
+            <section
+              className="w-full max-w-md overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white shadow-2xl ring-1 ring-slate-200"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#143ca8]">Notifications</p>
+                  <h2 className="mt-1 truncate text-lg font-bold text-slate-900">Vos notifications</h2>
                 </div>
-                <div className="h-fit rounded-2xl bg-[#f5f7ff] p-5 lg:sticky lg:top-24">
-                  {selectedNotice ? (
-                    <>
-                      <p className="text-xs font-bold uppercase tracking-wider text-[#143ca8]">Notification sélectionnée</p>
-                      <h2 className="mt-3 text-xl font-bold">{selectedNotice.title}</h2>
-                      <p className="mt-3 whitespace-pre-line text-sm leading-6 text-slate-600">{selectedNotice.message || "Aucun détail supplémentaire."}</p>
-                      <p className="mt-4 text-xs text-slate-400">{new Date(selectedNotice.createdAt).toLocaleString("fr-FR")}</p>
-                    </>
-                  ) : <p className="text-sm text-slate-500">Sélectionnez une notification pour afficher son contenu.</p>}
-                </div>
+                <button
+                  type="button"
+                  onClick={goHome}
+                  className="btn btn-ghost btn-circle btn-sm"
+                  aria-label="Fermer les notifications"
+                >
+                  <X size={16} />
+                </button>
               </div>
-            )}
-          </section>
+
+              <div className="max-h-[70vh] overflow-y-auto p-3">
+                {notices.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-center text-slate-500">
+                    <Bell className="mb-3 text-slate-300" size={32} />
+                    <p className="text-sm">Aucune notification pour le moment.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {notices.map((item) => (
+                      <button
+                        type="button"
+                        key={item.id}
+                        onClick={() => void openNotice(item)}
+                        className={`w-full rounded-2xl border p-3 text-left transition ${selectedNotice?.id === item.id ? "border-[#143ca8] bg-[#f3f6ff] ring-2 ring-[#dbe5ff]" : "border-slate-200 bg-white hover:border-slate-300"} ${item.read ? "opacity-90" : "border-blue-200 bg-blue-50/70"}`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <strong className="text-sm text-slate-800">{item.title}</strong>
+                          {!item.read && <span className="badge badge-primary badge-xs">Nouveau</span>}
+                        </div>
+                        <p className="mt-2 line-clamp-2 text-xs leading-5 text-slate-600">{item.message || "Aucun message"}</p>
+                        <p className="mt-2 text-[11px] text-slate-400">{new Date(item.createdAt).toLocaleString("fr-FR")}</p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {selectedNotice && (
+                <div className="border-t border-slate-100 bg-slate-50 p-4">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#143ca8]">Sélectionnée</p>
+                  <h3 className="mt-2 text-base font-bold text-slate-900">{selectedNotice.title}</h3>
+                  <p className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-600">{selectedNotice.message || "Aucun détail supplémentaire."}</p>
+                  <p className="mt-3 text-[11px] text-slate-400">{new Date(selectedNotice.createdAt).toLocaleString("fr-FR")}</p>
+                </div>
+              )}
+            </section>
+          </div>
         )}
         <section className={`${showProducts || noticeOpen || selectedProduct || publishOpen ? "hidden" : ""} hero-panel relative isolate mt-4 overflow-hidden rounded-[2rem] bg-[#143ca8] text-white shadow-2xl shadow-[#143ca8]/15 sm:mt-6`}>
           <div
