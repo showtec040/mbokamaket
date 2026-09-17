@@ -359,6 +359,7 @@ function App() {
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [installOpen, setInstallOpen] = useState(false);
   const [visitorCount, setVisitorCount] = useState<number | null>(null);
+  const [apkDownloadCount, setApkDownloadCount] = useState<number | null>(null);
   const [legalPage, setLegalPage] = useState<"conditions" | "confidentialite" | null>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
   const mobileSearchRef = useRef<HTMLLabelElement>(null);
@@ -372,6 +373,17 @@ function App() {
   const tiktokUrl = import.meta.env.VITE_TIKTOK_URL as string | undefined;
   const instagramUrl = import.meta.env.VITE_INSTAGRAM_URL as string | undefined;
   const youtubeUrl = import.meta.env.VITE_YOUTUBE_URL as string | undefined;
+  const apkDownloadUrl = apk?.replace(/[?&]dl=0(?:&|$)/, (match) => match.startsWith("?") ? "?dl=1" : "&dl=1");
+  const registerApkDownload = async () => {
+    setApkDownloadCount((current) => typeof current === "number" ? current + 1 : current);
+    if (!supabase) return;
+    const { error: insertError } = await supabase.from("apk_downloads").insert({});
+    if (insertError) return;
+    const { count } = await supabase
+      .from("apk_downloads")
+      .select("id", { count: "exact", head: true });
+    if (typeof count === "number") setApkDownloadCount(count);
+  };
   const toggleFavorite = (productId: string) => {
     setFavoriteIds((current) => current.includes(productId)
       ? current.filter((id) => id !== productId)
@@ -398,6 +410,13 @@ function App() {
       }
     };
     void registerVisit();
+    const loadApkDownloads = async () => {
+      const { count } = await client
+        .from("apk_downloads")
+        .select("id", { count: "exact", head: true });
+      if (typeof count === "number") setApkDownloadCount(count);
+    };
+    void loadApkDownloads();
   }, []);
   useEffect(() => {
     const isStandalone = window.matchMedia("(display-mode: standalone)").matches
@@ -1463,8 +1482,10 @@ function App() {
               icon={ApkLogo}
               title="APK Android"
               subtitle="Installation directe"
-              href={apk?.replace(/[?&]dl=0(?:&|$)/, (match) => match.startsWith("?") ? "?dl=1" : "&dl=1")}
+              href={apkDownloadUrl}
               download
+              onDownload={registerApkDownload}
+              downloadCount={apkDownloadCount}
             />
           </div>
         </section>
@@ -1532,12 +1553,16 @@ function DownloadCard({
   subtitle,
   href,
   download = false,
+  onDownload,
+  downloadCount,
 }: {
   icon: Icon;
   title: string;
   subtitle: string;
   href?: string;
   download?: boolean;
+  onDownload?: () => void;
+  downloadCount?: number | null;
 }) {
   return (
     <div className="download-card flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-5 transition hover:-translate-y-1 hover:shadow-lg">
@@ -1549,16 +1574,24 @@ function DownloadCard({
         <p className="text-sm text-slate-500">{subtitle}</p>
       </div>
       {href ? (
-        <a
-          href={href}
-          target={download ? "_self" : "_blank"}
-          rel={download ? undefined : "noopener noreferrer"}
-          download={download ? "Mbokamaket-v1.0.0.apk" : undefined}
-          type={download ? "application/vnd.android.package-archive" : undefined}
-          className="btn btn-sm rounded-lg bg-[#143ca8] text-white"
-        >
-          {download ? "Télécharger" : "Ouvrir"}
-        </a>
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <a
+            href={href}
+            target={download ? "_self" : "_blank"}
+            rel={download ? undefined : "noopener noreferrer"}
+            download={download ? "Mbokamaket-v1.0.0.apk" : undefined}
+            type={download ? "application/vnd.android.package-archive" : undefined}
+            onClick={download ? onDownload : undefined}
+            className="btn btn-sm rounded-lg bg-[#143ca8] text-white"
+          >
+            {download ? "Télécharger" : "Ouvrir"}
+          </a>
+          {download && typeof downloadCount === "number" && (
+            <span className="text-[10px] text-slate-400">
+              {downloadCount.toLocaleString("fr-FR")} téléchargements
+            </span>
+          )}
+        </div>
       ) : (
         <span className="text-xs text-slate-400">Bientôt</span>
       )}
