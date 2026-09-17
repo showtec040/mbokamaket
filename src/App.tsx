@@ -192,6 +192,7 @@ type Row = {
 const PRODUCT_IMAGES_BUCKET = "product-images";
 const DEFAULT_APK_URL = "https://www.dropbox.com/scl/fi/5zdwh2zrttr476fkc50it/MbokaMarket-v1.0.0.apk.apk?rlkey=6t6ead4jxe465hfcy87plwx9s&st=hds9drrx&dl=1";
 const isMobileBrowser = () => /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || "");
+const isAndroidBrowser = () => /Android/i.test(navigator.userAgent || "");
 const getAppDeepLinkUrl = (path: string, params?: Record<string, string | undefined>) => {
   const url = new URL("mbokamaket://" + path.replace(/^\/+/, ""));
   Object.entries(params || {}).forEach(([key, value]) => {
@@ -353,6 +354,7 @@ function App() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [installOpen, setInstallOpen] = useState(false);
+  const [nativeAppAvailable, setNativeAppAvailable] = useState(false);
   const [visitorCount, setVisitorCount] = useState<number | null>(null);
   const [apkDownloadCount, setApkDownloadCount] = useState<number | null>(null);
   const [legalPage, setLegalPage] = useState<"conditions" | "confidentialite" | null>(null);
@@ -416,9 +418,30 @@ function App() {
   useEffect(() => {
     const isStandalone = window.matchMedia("(display-mode: standalone)").matches
       || Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
-    const isAndroid = /Android/i.test(navigator.userAgent);
+    const isAndroid = isAndroidBrowser();
     if (!isStandalone && isAndroid) setInstallOpen(true);
+    if (!isAndroid) return;
+
+    if (localStorage.getItem("mbokamaket-native-app-available") === "1") {
+      setNativeAppAvailable(true);
+    }
+
+    const relatedAppsNavigator = navigator as Navigator & {
+      getInstalledRelatedApps?: () => Promise<Array<unknown>>;
+    };
+    if (!relatedAppsNavigator.getInstalledRelatedApps) return;
+    void relatedAppsNavigator.getInstalledRelatedApps().then((apps) => {
+      if (apps.length > 0) {
+        setNativeAppAvailable(true);
+        localStorage.setItem("mbokamaket-native-app-available", "1");
+      }
+    }).catch(() => undefined);
   }, []);
+  const openNativeApp = () => {
+    localStorage.setItem("mbokamaket-native-app-available", "1");
+    setNativeAppAvailable(true);
+    openAppIfInstalled("/");
+  };
   const loadProducts = async () => {
     if (!supabase) return;
     setLoading(true);
@@ -846,20 +869,26 @@ function App() {
           <div className="flex items-start gap-3">
             <img src={appIcon} alt="" className="size-12 rounded-xl object-contain" />
             <div className="min-w-0 flex-1">
-              <h2 className="font-bold text-slate-900">Installer Mbokamaket</h2>
-              <p className="mt-1 text-sm text-slate-500">Installez directement l’application Android depuis l’APK.</p>
+              <h2 className="font-bold text-slate-900">{nativeAppAvailable ? "Ouvrir Mbokamaket" : "Installer Mbokamaket"}</h2>
+              <p className="mt-1 text-sm text-slate-500">{nativeAppAvailable ? "L’application semble déjà installée sur ce téléphone." : "Installez directement l’application Android depuis l’APK."}</p>
             </div>
             <button type="button" onClick={() => setInstallOpen(false)} className="btn btn-ghost btn-circle btn-sm" aria-label="Fermer">×</button>
           </div>
-          <a
-            href={apkDownloadUrl}
-            download="Mbokamaket-v1.0.0.apk"
-            type="application/vnd.android.package-archive"
-            onClick={registerApkDownload}
-            className="btn mt-3 w-full rounded-xl bg-[#143ca8] text-white"
-          >
-            Installer l’application Android
-          </a>
+          {nativeAppAvailable ? (
+            <button type="button" onClick={openNativeApp} className="btn mt-3 w-full rounded-xl bg-[#143ca8] text-white">
+              Ouvrir l’application
+            </button>
+          ) : (
+            <a
+              href={apkDownloadUrl}
+              download="Mbokamaket-v1.0.0.apk"
+              type="application/vnd.android.package-archive"
+              onClick={registerApkDownload}
+              className="btn mt-3 w-full rounded-xl bg-[#143ca8] text-white"
+            >
+              Installer l’application Android
+            </a>
+          )}
           <button type="button" onClick={() => setInstallOpen(false)} className="mt-2 w-full text-xs text-slate-400 hover:text-slate-600">
             Continuer sur le site
           </button>
