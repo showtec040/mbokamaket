@@ -141,10 +141,6 @@ type Product = {
   phone: string;
 };
 type User = { id: string; email?: string; fullName?: string; username?: string; role?: string; accountType?: string; isVerified: boolean };
-type BeforeInstallPromptEvent = Event & {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
-};
 type Notice = {
   id: string;
   title: string;
@@ -356,7 +352,6 @@ function App() {
   });
   const [mobileOpen, setMobileOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
-  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [installOpen, setInstallOpen] = useState(false);
   const [visitorCount, setVisitorCount] = useState<number | null>(null);
   const [apkDownloadCount, setApkDownloadCount] = useState<number | null>(null);
@@ -421,24 +416,9 @@ function App() {
   useEffect(() => {
     const isStandalone = window.matchMedia("(display-mode: standalone)").matches
       || Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
-    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-    if (isStandalone || !isMobile) return;
-    const showInstallPrompt = (event: Event) => {
-      event.preventDefault();
-      setInstallPrompt(event as BeforeInstallPromptEvent);
-      setInstallOpen(true);
-    };
-    window.addEventListener("beforeinstallprompt", showInstallPrompt);
-    if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) setInstallOpen(true);
-    return () => window.removeEventListener("beforeinstallprompt", showInstallPrompt);
+    const isAndroid = /Android/i.test(navigator.userAgent);
+    if (!isStandalone && isAndroid) setInstallOpen(true);
   }, []);
-  const installApp = async () => {
-    if (!installPrompt) return;
-    await installPrompt.prompt();
-    await installPrompt.userChoice;
-    setInstallPrompt(null);
-    setInstallOpen(false);
-  };
   const loadProducts = async () => {
     if (!supabase) return;
     setLoading(true);
@@ -867,15 +847,22 @@ function App() {
             <img src={appIcon} alt="" className="size-12 rounded-xl object-contain" />
             <div className="min-w-0 flex-1">
               <h2 className="font-bold text-slate-900">Installer Mbokamaket</h2>
-              {installPrompt ? (
-                <p className="mt-1 text-sm text-slate-500">Ajoutez l’application à votre écran d’accueil.</p>
-              ) : (
-                <p className="mt-1 text-sm text-slate-500">Dans Safari, appuyez sur Partager puis « Sur l’écran d’accueil ».</p>
-              )}
+              <p className="mt-1 text-sm text-slate-500">Installez directement l’application Android depuis l’APK.</p>
             </div>
             <button type="button" onClick={() => setInstallOpen(false)} className="btn btn-ghost btn-circle btn-sm" aria-label="Fermer">×</button>
           </div>
-          {installPrompt && <button type="button" onClick={() => void installApp()} className="btn mt-3 w-full rounded-xl bg-[#143ca8] text-white">Installer l’application</button>}
+          <a
+            href={apkDownloadUrl}
+            download="Mbokamaket-v1.0.0.apk"
+            type="application/vnd.android.package-archive"
+            onClick={registerApkDownload}
+            className="btn mt-3 w-full rounded-xl bg-[#143ca8] text-white"
+          >
+            Installer l’application Android
+          </a>
+          <button type="button" onClick={() => setInstallOpen(false)} className="mt-2 w-full text-xs text-slate-400 hover:text-slate-600">
+            Continuer sur le site
+          </button>
         </aside>
       )}
       {loading && (
@@ -1159,6 +1146,36 @@ function App() {
                 <button type="button" onClick={openProducts} className="btn btn-sm rounded-xl bg-[#143ca8] text-white shadow-sm hover:bg-[#102f85]">
                   Découvrez nos produits <Search size={15} />
                 </button>
+              </div>
+              <div className="mt-3 flex flex-col gap-4 rounded-2xl border border-[#cbd9ff] bg-white/90 p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-5">
+                <div className="min-w-0">
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#143ca8]">Vendeurs, rejoignez Mbokamaket</p>
+                  <h1 className="mt-1 max-w-2xl text-xl font-bold leading-tight text-slate-900 sm:text-2xl">
+                    Créez votre compte vendeur et rejoignez les 100 premiers comptes de vente.
+                  </h1>
+                  <p className="mt-2 max-w-2xl text-sm leading-5 text-slate-600">
+                    Profitez d’une certification gratuite pour votre business et de la promotion gratuite de vos produits.
+                  </p>
+                </div>
+                <div className="flex shrink-0 flex-col gap-2 sm:min-w-44">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!user) {
+                        openAuth("signup");
+                        return;
+                      }
+                      setPublishOpen(true);
+                      window.location.hash = "publier";
+                    }}
+                    className="btn btn-sm rounded-xl bg-[#143ca8] text-white hover:bg-[#102f85]"
+                  >
+                    Créer mon compte vendeur
+                  </button>
+                  <button type="button" onClick={openProducts} className="btn btn-sm rounded-xl border-[#143ca8] bg-white text-[#143ca8] hover:bg-[#edf3ff]">
+                    Voir les produits
+                  </button>
+                </div>
               </div>
               {!isMobileViewport && desktopHeroProducts.length > 0 ? (
                 <>
