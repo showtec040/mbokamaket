@@ -16,6 +16,10 @@ const firstImage = (value) => {
     return value.startsWith('http') ? value : '';
   }
 };
+const slugify = (value) => String(value || '')
+  .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 70);
+const productSlug = (product) => `${slugify(product.title) || 'annonce'}-${product.id}`;
 
 const querySupabase = async (table, id, columns) => {
   try {
@@ -27,6 +31,19 @@ const querySupabase = async (table, id, columns) => {
     return rows[0] || null;
   } catch (error) {
     console.error('[share] Supabase request failed', error);
+    return null;
+  }
+};
+const queryProductBySlug = async (slug) => {
+  try {
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/produits?select=id,title,description,price,currency,images,location&status=not.in.(sold,archived)&limit=1000`, {
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
+    });
+    if (!response.ok) return null;
+    const products = await response.json();
+    return products.find((product) => productSlug(product) === slug) || null;
+  } catch (error) {
+    console.error('[share] Product slug lookup failed', error);
     return null;
   }
 };
@@ -50,13 +67,14 @@ export default async function handler(request, response) {
     const query = request.query || Object.fromEntries(new URL(request.url, 'https://www.mbokamaket.com').searchParams.entries());
     const type = Array.isArray(query.type) ? query.type[0] : query.type;
     const id = Array.isArray(query.id) ? query.id[0] : query.id;
-    if (!id || (type !== 'product' && type !== 'profile')) {
+    const slug = Array.isArray(query.slug) ? query.slug[0] : query.slug;
+    if ((!id && !slug) || (type !== 'product' && type !== 'profile')) {
       sendHtml(response, 404, '<h1>Lien de partage invalide.</h1>');
       return;
     }
 
   if (type === 'product') {
-    const product = await querySupabase('produits', id, 'id,title,description,price,currency,images,location');
+    const product = slug ? await queryProductBySlug(slug) : await querySupabase('produits', id, 'id,title,description,price,currency,images,location');
     if (!product) {
       sendHtml(response, 404, '<h1>Produit introuvable.</h1>');
       return;
@@ -64,11 +82,11 @@ export default async function handler(request, response) {
     const title = product.title || 'Produit MbokaMarket';
     const description = String(product.description || `Découvrez ${title} sur MbokaMarket.`).slice(0, 240);
     const image = firstImage(product.images);
-    const canonical = `${SITE_URL}/product/${encodeURIComponent(id)}`;
+    const canonical = `${SITE_URL}/annonce/${encodeURIComponent(productSlug(product))}`;
     const appUrl = `mbokamaket://product/${encodeURIComponent(id)}`;
     const price = Number(product.price || 0).toLocaleString('fr-FR');
     const currency = product.currency === 'USD' ? '$' : product.currency || 'FC';
-    const siteProductUrl = `${SITE_URL}/?produit=${encodeURIComponent(id)}`;
+    const siteProductUrl = canonical;
     const content = `${image ? `<img class="cover" src="${escapeHtml(image)}" alt="${escapeHtml(title)}">` : ''}<div class="body"><div class="eyebrow">Produit MbokaMarket</div><h1 class="title">${escapeHtml(title)}</h1><p class="description">${escapeHtml(description)}</p><p><strong>${escapeHtml(price)} ${escapeHtml(currency)}</strong>${product.location ? ` · ${escapeHtml(product.location)}` : ''}</p><a class="button" href="${escapeHtml(appUrl)}">Ouvrir dans l’application</a><a class="button secondary" href="${escapeHtml(siteProductUrl)}">Voir le détail sur le site</a></div>`;
       sendHtml(response, 200, render({ title: `${title} | MbokaMarket`, description, image, canonical, content }));
       return;

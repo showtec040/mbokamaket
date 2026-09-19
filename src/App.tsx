@@ -31,9 +31,11 @@ import {
   X,
 } from "lucide-react";
 import { FaFacebookF, FaGoogle, FaInstagram, FaTiktok, FaYoutube } from "react-icons/fa6";
+import { useLocation, useNavigate } from "react-router-dom";
 import { supabase, supabaseConfigured } from "./lib/supabase";
 import appIcon from "./assets/icon.png";
 import kambexaLogo from "./assets/kambexa.png";
+import { pageSeo, productPath, productSlug, Seo, siteStructuredData } from "./seo";
 
 function PasswordResetPage({ onClose, onLogin }: { onClose: () => void; onLogin: () => void }) {
   const [password, setPassword] = useState("");
@@ -259,6 +261,10 @@ const categories: Category[] = [
   { id: "5", label: "Sports", icon: Trophy },
 ];
 const categoryName = new Map(categories.map((item) => [item.id, item.label]));
+const categoryRouteIds: Record<string, string> = {
+  "/immobilier": "3",
+  "/vehicules": "4",
+};
 const normalizeDisplayName = (value?: string | null): string => {
   if (!value) return "";
   const cleaned = String(value).trim();
@@ -324,6 +330,8 @@ const mapProduct = (row: Row): Product => ({
 });
 
 function App() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [products, setProducts] = useState<Product[]>([]);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("Toutes");
@@ -362,6 +370,7 @@ function App() {
   const mobileSearchRef = useRef<HTMLLabelElement>(null);
   const [loading, setLoading] = useState(Boolean(supabase));
   const [error, setError] = useState("");
+  const currentPageSeo = pageSeo(location.pathname);
   const playStore = import.meta.env.VITE_PLAY_STORE_URL as string | undefined;
   const appStore = import.meta.env.VITE_APP_STORE_URL as string | undefined;
   const apk = (import.meta.env.VITE_APK_URL as string | undefined) || DEFAULT_APK_URL;
@@ -415,6 +424,20 @@ function App() {
     };
     void loadApkDownloads();
   }, []);
+  useEffect(() => {
+    const routeCategory = categoryRouteIds[location.pathname];
+    if (routeCategory) {
+      setCategory(routeCategory);
+      setShowProducts(true);
+      setSellerFilter(null);
+      return;
+    }
+    if (["/annonces", "/services", "/emploi", "/boutiques"].includes(location.pathname)) {
+      setCategory("Toutes");
+      setShowProducts(true);
+      setSellerFilter(null);
+    }
+  }, [location.pathname]);
   useEffect(() => {
     const isStandalone = window.matchMedia("(display-mode: standalone)").matches
       || Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
@@ -702,6 +725,7 @@ function App() {
     setNoticeOpen(false);
     setSelectedNotice(null);
     setShowProducts(true);
+    navigate("/annonces");
     window.location.hash = "produits";
   };
   const goHome = () => {
@@ -713,6 +737,7 @@ function App() {
     setNoticeOpen(false);
     setSelectedNotice(null);
     setShowProducts(false);
+    navigate("/");
     window.location.hash = "accueil";
   };
   const openNotifications = () => {
@@ -760,13 +785,16 @@ function App() {
   useEffect(() => {
     const productId = new URLSearchParams(window.location.search).get("produit");
     const pathMatch = window.location.pathname.match(/^\/product\/([^/]+)\/?$/i);
+    const announcementMatch = window.location.pathname.match(/^\/annonce\/([^/]+)\/?$/i);
+    const sharedProductSlug = announcementMatch ? decodeURIComponent(announcementMatch[1]) : "";
     const sharedProductId = productId || (pathMatch ? decodeURIComponent(pathMatch[1]) : "");
-    if (!sharedProductId || products.length === 0) return;
-    const sharedProduct = products.find((product) => product.id === sharedProductId);
+    if ((!sharedProductId && !sharedProductSlug) || products.length === 0) return;
+    const sharedProduct = products.find((product) => product.id === sharedProductId)
+      || products.find((product) => productSlug(product) === sharedProductSlug);
     if (!sharedProduct) return;
     setSelectedProduct(sharedProduct);
     setShowProducts(false);
-  }, [products]);
+  }, [location.pathname, products]);
   useEffect(() => {
     const profileId = new URLSearchParams(window.location.search).get("profil");
     const pathMatch = window.location.pathname.match(/^\/profile\/([^/]+)\/?$/i);
@@ -780,34 +808,6 @@ function App() {
     setSellerFilter({ id: sharedProfileId, name: sellerProduct.seller });
     setShowProducts(true);
   }, [products]);
-  useEffect(() => {
-    if (!selectedProduct) return;
-    const previousTitle = document.title;
-    const metadata = [
-      ["meta[property='og:title']", `Mbokamaket | ${selectedProduct.title}`],
-      ["meta[property='og:description']", selectedProduct.description || "Découvrez ce produit sur Mbokamaket."],
-      ["meta[property='og:image']", selectedProduct.image],
-      ["meta[name='twitter:title']", `Mbokamaket | ${selectedProduct.title}`],
-      ["meta[name='twitter:description']", selectedProduct.description || "Découvrez ce produit sur Mbokamaket."],
-      ["meta[name='twitter:image']", selectedProduct.image],
-    ] as const;
-    document.title = `Mbokamaket | ${selectedProduct.title}`;
-    const previousValues = metadata.map(([selector]) => {
-      const element = document.head.querySelector<HTMLMetaElement>(selector);
-      return [element, element?.content || null] as const;
-    });
-    metadata.forEach(([selector, content]) => {
-      if (!content) return;
-      const element = document.head.querySelector<HTMLMetaElement>(selector);
-      if (element) element.content = content;
-    });
-    return () => {
-      document.title = previousTitle;
-      previousValues.forEach(([element, content]) => {
-        if (element && content !== null) element.content = content;
-      });
-    };
-  }, [selectedProduct]);
   const authRoute = window.location.hash === "#connexion" || window.location.hash === "#inscription";
   const passwordResetRoute = new URLSearchParams(window.location.search).get("reset") === "1";
 
@@ -862,8 +862,33 @@ function App() {
     }
     setProducts((current) => current.filter((item) => item.id !== product.id));
   };
+  const openProduct = (product: Product) => {
+    setSelectedProduct(product);
+    setShowProducts(false);
+    navigate(productPath(product));
+  };
+  const seo = selectedProduct
+    ? {
+        title: `${selectedProduct.title} à vendre en RDC - Mbokamaket`,
+        description: `${selectedProduct.description || `${selectedProduct.category} disponible à ${selectedProduct.location}`}. Achetez et contactez le vendeur sur Mbokamaket.`,
+        path: productPath(selectedProduct),
+        image: selectedProduct.image,
+        type: "product" as const,
+        jsonLd: {
+          "@context": "https://schema.org",
+          "@type": selectedProduct.category === "Immobilier" || selectedProduct.category === "Auto & Moto" ? "Offer" : "Product",
+          name: selectedProduct.title,
+          description: selectedProduct.description || undefined,
+          image: selectedProduct.image ? [selectedProduct.image] : undefined,
+          url: `${window.location.origin}${productPath(selectedProduct)}`,
+          category: selectedProduct.category,
+          offers: { "@type": "Offer", price: selectedProduct.price, priceCurrency: selectedProduct.currency === "$" ? "USD" : "CDF", availability: "https://schema.org/InStock", url: `${window.location.origin}${productPath(selectedProduct)}` },
+        },
+      }
+    : null;
   return (
     <div className="min-h-screen bg-[#f6f8fc] text-slate-900">
+      <Seo {...(seo || { ...currentPageSeo, jsonLd: siteStructuredData })} />
       {installOpen && (
         <aside className="fixed inset-x-3 bottom-3 z-[90] rounded-2xl border border-blue-100 bg-white p-4 shadow-2xl shadow-[#143ca8]/20 sm:inset-x-auto sm:right-6 sm:w-96" aria-label="Installation de Mbokamaket">
           <div className="flex items-start gap-3">
@@ -1071,7 +1096,7 @@ function App() {
             products={products.filter((product) => product.sellerId === user.id)}
             onClose={goHome}
             onPublish={() => { setManageProductsOpen(false); setPublishOpen(true); window.location.hash = "publier"; }}
-            onViewProduct={(product) => { setManageProductsOpen(false); setSelectedProduct(product); window.location.hash = "accueil"; }}
+            onViewProduct={(product) => { setManageProductsOpen(false); openProduct(product); }}
             onDelete={(product) => void deleteProduct(product)}
           />
         )}
@@ -1214,9 +1239,9 @@ function App() {
                   </div>
                   <div className="mt-4 grid flex-1 grid-cols-3 gap-3">
                     {desktopHeroProducts.map((product) => (
-                      <button key={product.id} type="button" onClick={() => setSelectedProduct(product)} className="group flex min-w-0 flex-col overflow-hidden rounded-xl bg-white text-left shadow-md transition hover:-translate-y-1 hover:shadow-lg" aria-label={`Voir le produit ${product.title}`}>
+                      <button key={product.id} type="button" onClick={() => openProduct(product)} className="group flex min-w-0 flex-col overflow-hidden rounded-xl bg-white text-left shadow-md transition hover:-translate-y-1 hover:shadow-lg" aria-label={`Voir le produit ${product.title}`}>
                         <div className="relative aspect-[16/9] bg-slate-100">
-                          {product.image ? <img src={product.image} alt={product.title} className="h-full w-full object-cover transition duration-500 group-hover:scale-105" /> : <div className="grid h-full place-items-center text-xs text-slate-400">Pas d’image</div>}
+                          {product.image ? <img src={product.image} alt={product.title} loading="lazy" decoding="async" className="h-full w-full object-cover transition duration-500 group-hover:scale-105" /> : <div className="grid h-full place-items-center text-xs text-slate-400">Pas d’image</div>}
                           {(product.featured || product.promoted) && <span className="badge absolute left-2 top-2 border-0 bg-orange-400 text-[10px] text-white">Sponsorisé</span>}
                         </div>
                         <div className="min-w-0 p-3">
@@ -1239,12 +1264,12 @@ function App() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => setSelectedProduct(heroProduct)}
+                    onClick={() => openProduct(heroProduct)}
                     className="group mt-5 flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl bg-white text-left shadow-lg transition hover:-translate-y-1 hover:shadow-xl"
                     aria-label={`Voir le produit ${heroProduct.title}`}
                   >
                     <div className="relative aspect-[16/7] flex-none bg-slate-100">
-                      {heroProduct.image ? <img src={heroProduct.image} alt={heroProduct.title} className="h-full w-full object-cover transition duration-500 group-hover:scale-105" /> : <div className="grid h-full place-items-center text-slate-400">Pas d’image</div>}
+                      {heroProduct.image ? <img src={heroProduct.image} alt={heroProduct.title} loading="lazy" decoding="async" className="h-full w-full object-cover transition duration-500 group-hover:scale-105" /> : <div className="grid h-full place-items-center text-slate-400">Pas d’image</div>}
                       {(heroProduct.featured || heroProduct.promoted) && <span className="badge absolute left-3 top-3 border-0 bg-orange-400 text-white">Annonce sponsorisée</span>}
                     </div>
                     <div className="p-4">
@@ -1321,8 +1346,8 @@ function App() {
                 {homeProducts.map((item) => (
                   <article
                     key={item.id}
-                    onClick={() => setSelectedProduct(item)}
-                    onKeyDown={(event) => event.key === "Enter" && setSelectedProduct(item)}
+                    onClick={() => openProduct(item)}
+                    onKeyDown={(event) => event.key === "Enter" && openProduct(item)}
                     role="button"
                     tabIndex={0}
                     className="product-card cursor-pointer overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-lg"
@@ -1432,8 +1457,8 @@ function App() {
               {visibleProducts.map((item) => (
                 <article
                   key={item.id}
-                  onClick={() => setSelectedProduct(item)}
-                  onKeyDown={(event) => event.key === "Enter" && setSelectedProduct(item)}
+                  onClick={() => openProduct(item)}
+                  onKeyDown={(event) => event.key === "Enter" && openProduct(item)}
                   role="button"
                   tabIndex={0}
                   className="product-card cursor-pointer overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-lg"
@@ -2464,7 +2489,7 @@ function ProductDetails({ product, isFavorite, onToggleFavorite, onClose, onSell
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [followBusy, setFollowBusy] = useState(false);
   const whatsappNumber = normalizeWhatsAppNumber(product.phone);
-  const productUrl = `${window.location.origin}/product/${encodeURIComponent(product.id)}`;
+  const productUrl = `${window.location.origin}${productPath(product)}`;
   const profileUrl = `${window.location.origin}/profile/${encodeURIComponent(product.sellerId)}`;
   const whatsappMessage = `Bonjour, je suis intéressé par votre annonce « ${product.title} » sur Mbokamaket.\n\nVoir le produit : ${productUrl}`;
   const whatsappUrl = whatsappNumber
