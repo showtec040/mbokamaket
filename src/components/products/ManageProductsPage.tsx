@@ -1,0 +1,15 @@
+import { Package, Plus, Trash2 } from "lucide-react";
+import { PriceDisplay } from "../ui/PriceDisplay";
+import type { Product } from "../../types/marketplace";
+
+type ManageProductsPageProps = {
+  products: Product[];
+  onClose: () => void;
+  onPublish: () => void;
+  onViewProduct: (product: Product) => void;
+  onDelete: (product: Product) => void;
+};
+
+export function ManageProductsPage({ products, onClose, onPublish, onViewProduct, onDelete }: ManageProductsPageProps) {
+  return <section className="mt-6 rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm sm:mt-10 sm:p-8"><div className="flex flex-col gap-4 border-b border-slate-100 pb-5 sm:flex-row sm:items-start sm:justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#143ca8]">Espace vendeur</p><h1 className="mt-2 font-display text-3xl font-bold">Mes produits</h1><p className="mt-2 text-sm text-slate-500">Consultez et gérez vos annonces publiées.</p></div><div className="flex gap-2"><button type="button" onClick={onClose} className="btn btn-ghost">Retour</button><button type="button" onClick={onPublish} className="btn bg-[#143ca8] text-white"><Plus size={17} /> Publier</button></div></div>{products.length === 0 ? <div className="py-16 text-center"><Package className="mx-auto text-slate-300" size={42} /><h2 className="mt-4 text-lg font-bold">Vous n’avez aucun produit</h2><p className="mt-2 text-sm text-slate-500">Publiez votre première annonce pour la retrouver ici.</p><button type="button" onClick={onPublish} className="btn mt-5 bg-[#143ca8] text-white"><Plus size={17} /> Publier une annonce</button></div> : <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{products.map((product) => <article key={product.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white"><button type="button" onClick={() => onViewProduct(product)} className="block w-full text-left"><div className="aspect-[4/3] bg-slate-100">{product.image ? <img src={product.image} alt={product.title} className="h-full w-full object-cover" /> : <div className="grid h-full place-items-center text-slate-400">Pas d’image</div>}</div><div className="p-4"><div className="flex items-start justify-between gap-3"><h2 className="line-clamp-2 font-bold">{product.title}</h2><span className={`badge shrink-0 border-0 ${product.status === "active" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>{product.status === "active" ? "Active" : product.status}</span></div><PriceDisplay product={product} compact /><p className="mt-2 text-xs text-slate-500">{product.location} · {product.category}</p></div></button><div className="flex gap-2 border-t border-slate-100 p-3"><button type="button" onClick={() => onViewProduct(product)} className="btn btn-ghost btn-sm flex-1">Voir</button><button type="button" onClick={() => onDelete(product)} className="btn btn-ghost btn-sm text-red-600" aria-label={`Supprimer ${product.title}`} title="Supprimer"><Trash2 size={16} /></button></div></article>)}</div>}</section>;
+}
