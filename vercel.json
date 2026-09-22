@@ -4,6 +4,7 @@
   "outputDirectory": "dist",
   "rewrites": [
     { "source": "/sitemap.xml", "destination": "/api/sitemap" },
+    { "source": "/produit/:slug", "destination": "/index.html" },
     { "source": "/annonce/:slug", "destination": "/api/share?type=product&slug=:slug" },
     { "source": "/product/:id", "destination": "/api/share?type=product&id=:id" },
     { "source": "/profile/:id", "destination": "/api/share?type=profile&id=:id" },

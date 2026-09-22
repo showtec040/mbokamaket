@@ -784,10 +784,11 @@ function App() {
   }, []);
   useEffect(() => {
     const productId = new URLSearchParams(window.location.search).get("produit");
-    const pathMatch = window.location.pathname.match(/^\/product\/([^/]+)\/?$/i);
+    const productPathMatch = window.location.pathname.match(/^\/produit\/([^/]+)\/?$/i)
+      || window.location.pathname.match(/^\/product\/([^/]+)\/?$/i);
     const announcementMatch = window.location.pathname.match(/^\/annonce\/([^/]+)\/?$/i);
-    const sharedProductSlug = announcementMatch ? decodeURIComponent(announcementMatch[1]) : "";
-    const sharedProductId = productId || (pathMatch ? decodeURIComponent(pathMatch[1]) : "");
+    const sharedProductSlug = announcementMatch ? decodeURIComponent(announcementMatch[1]) : (productPathMatch ? decodeURIComponent(productPathMatch[1]) : "");
+    const sharedProductId = productId || (productPathMatch && productPathMatch[1]?.length === 36 ? decodeURIComponent(productPathMatch[1]) : "");
     if ((!sharedProductId && !sharedProductSlug) || products.length === 0) return;
     const sharedProduct = products.find((product) => product.id === sharedProductId)
       || products.find((product) => productSlug(product) === sharedProductSlug);
@@ -814,7 +815,9 @@ function App() {
   useEffect(() => {
     if (!isMobileBrowser()) return;
     const href = new URL(window.location.href);
-    const productId = href.searchParams.get("produit") || href.pathname.match(/^\/product\/([^/]+)\/?>$/i)?.[1];
+    const productId = href.searchParams.get("produit")
+      || href.pathname.match(/^\/produit\/([^/]+)\/?>$/i)?.[1]
+      || href.pathname.match(/^\/product\/([^/]+)\/?>$/i)?.[1];
     const profileId = href.searchParams.get("profil") || href.pathname.match(/^\/profile\/([^/]+)\/?>$/i)?.[1];
     const hasCallbackCode = Boolean(href.searchParams.get("code") || href.searchParams.get("access_token") || href.searchParams.get("error"));
 

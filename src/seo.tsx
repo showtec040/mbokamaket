@@ -17,7 +17,7 @@ export const slugify = (value: string) => value
   .slice(0, 70);
 
 export const productSlug = (product: Pick<Product, "title" | "id">) => `${slugify(product.title) || "annonce"}-${product.id}`;
-export const productPath = (product: Pick<Product, "title" | "id">) => `/?produit=${encodeURIComponent(product.id)}`;
+export const productPath = (product: Pick<Product, "title" | "id">) => `/produit/${productSlug(product)}`;
 
 const absoluteUrl = (value: string) => {
   try {
