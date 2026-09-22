@@ -86,7 +86,7 @@ export default async function handler(request, response) {
     const appUrl = `mbokamaket://product/${encodeURIComponent(id)}`;
     const price = Number(product.price || 0).toLocaleString('fr-FR');
     const currency = product.currency === 'USD' ? '$' : product.currency || 'FC';
-    const siteProductUrl = canonical;
+    const siteProductUrl = `${SITE_URL}/?produit=${encodeURIComponent(id)}`;
     const content = `${image ? `<img class="cover" src="${escapeHtml(image)}" alt="${escapeHtml(title)}">` : ''}<div class="body"><div class="eyebrow">Produit MbokaMarket</div><h1 class="title">${escapeHtml(title)}</h1><p class="description">${escapeHtml(description)}</p><p><strong>${escapeHtml(price)} ${escapeHtml(currency)}</strong>${product.location ? ` · ${escapeHtml(product.location)}` : ''}</p><a class="button" href="${escapeHtml(appUrl)}">Ouvrir dans l’application</a><a class="button secondary" href="${escapeHtml(siteProductUrl)}">Voir le détail sur le site</a></div>`;
       sendHtml(response, 200, render({ title: `${title} | MbokaMarket`, description, image, canonical, content }));
       return;
