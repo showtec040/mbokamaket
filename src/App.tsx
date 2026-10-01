@@ -377,6 +377,8 @@ function App() {
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [installOpen, setInstallOpen] = useState(false);
   const [nativeAppAvailable, setNativeAppAvailable] = useState(false);
+  const [nativeAppCheckComplete, setNativeAppCheckComplete] = useState(false);
+  const [nativeAppOpening, setNativeAppOpening] = useState(false);
   const [visitorCount, setVisitorCount] = useState<number | null>(null);
   const [apkDownloadCount, setApkDownloadCount] = useState<number | null>(null);
   const [legalPage, setLegalPage] = useState<"conditions" | "confidentialite" | null>(null);
@@ -459,10 +461,6 @@ function App() {
     if (!isStandalone && isAndroid) setInstallOpen(true);
     if (!isAndroid) return;
 
-    if (localStorage.getItem("mbokamaket-native-app-available") === "1") {
-      setNativeAppAvailable(true);
-    }
-
     const relatedAppsNavigator = navigator as Navigator & {
       getInstalledRelatedApps?: () => Promise<Array<unknown>>;
     };
@@ -470,12 +468,31 @@ function App() {
     void relatedAppsNavigator.getInstalledRelatedApps().then((apps) => {
       if (apps.length > 0) {
         setNativeAppAvailable(true);
-        localStorage.setItem("mbokamaket-native-app-available", "1");
       }
     }).catch(() => undefined);
   }, []);
   const openNativeApp = () => {
-    openAppIfInstalled("/");
+    if (nativeAppOpening) return;
+    setNativeAppOpening(true);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "hidden") return;
+      window.clearTimeout(fallbackTimer);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      setNativeAppAvailable(true);
+      setNativeAppOpening(false);
+    };
+    const fallbackTimer = window.setTimeout(() => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      setNativeAppOpening(false);
+      if (document.visibilityState === "visible") {
+        setNativeAppAvailable(false);
+        setNativeAppCheckComplete(true);
+      }
+    }, 2000);
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.location.href = getAppDeepLinkUrl("/");
   };
   const loadProducts = async () => {
     if (!supabase) return;
@@ -908,14 +925,14 @@ function App() {
           <div className="flex items-start gap-3">
             <img src={appIcon} alt="" className="size-12 rounded-xl object-contain" />
             <div className="min-w-0 flex-1">
-              <h2 className="font-bold text-slate-900">{nativeAppAvailable ? "Ouvrir dans l’application" : "Télécharger Mbokamaket"}</h2>
-              <p className="mt-1 text-sm text-slate-500">{nativeAppAvailable ? "L’application semble déjà installée sur ce téléphone." : "L’application n’est pas détectée. Téléchargez l’APK ; Android vous demandera de confirmer l’installation et, selon vos réglages, d’autoriser cette source."}</p>
+              <h2 className="font-bold text-slate-900">{nativeAppAvailable ? "Ouvrir dans l’application" : nativeAppCheckComplete ? "Télécharger Mbokamaket" : "Mbokamaket sur Android"}</h2>
+              <p className="mt-1 text-sm text-slate-500">{nativeAppAvailable ? "L’application semble déjà installée sur ce téléphone." : nativeAppOpening ? "Tentative d’ouverture de l’application..." : nativeAppCheckComplete ? "L’application ne s’est pas ouverte. Téléchargez l’APK ; Android vous demandera de confirmer l’installation et, selon vos réglages, d’autoriser cette source." : "Essayez d’ouvrir l’application. Si elle n’est pas installée, son téléchargement vous sera proposé."}</p>
             </div>
             <button type="button" onClick={() => setInstallOpen(false)} className="btn btn-ghost btn-circle btn-sm" aria-label="Fermer">×</button>
           </div>
-          {nativeAppAvailable ? (
-            <button type="button" onClick={openNativeApp} className="btn mt-3 w-full rounded-xl bg-[#143ca8] text-white">
-              Ouvrir l’application
+          {nativeAppAvailable || !nativeAppCheckComplete ? (
+            <button type="button" onClick={openNativeApp} disabled={nativeAppOpening} className="btn mt-3 w-full rounded-xl bg-[#143ca8] text-white">
+              {nativeAppOpening ? "Ouverture..." : nativeAppAvailable ? "Ouvrir l’application" : "Essayer d’ouvrir l’application"}
             </button>
           ) : (
             <a
