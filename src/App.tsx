@@ -192,7 +192,7 @@ type Row = {
 };
 
 const PRODUCT_IMAGES_BUCKET = "product-images";
-const DEFAULT_APK_URL = "https://www.dropbox.com/scl/fi/5zdwh2zrttr476fkc50it/MbokaMarket-v1.0.0.apk.apk?rlkey=6t6ead4jxe465hfcy87plwx9s&st=hds9drrx&dl=1";
+const DEFAULT_APK_URL = "https://www.dropbox.com/scl/fi/lvzealitvask4b3u4tvtp/MbokaMaket-v1.0.0.apk?rlkey=kp3w06kbnkkjbd5jlpw6f9p9r&st=h61yo0k8&dl=0";
 const isMobileBrowser = () => /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || "");
 const isAndroidBrowser = () => /Android/i.test(navigator.userAgent || "");
 const getAppDeepLinkUrl = (path: string, params?: Record<string, string | undefined>) => {
@@ -475,8 +475,6 @@ function App() {
     }).catch(() => undefined);
   }, []);
   const openNativeApp = () => {
-    localStorage.setItem("mbokamaket-native-app-available", "1");
-    setNativeAppAvailable(true);
     openAppIfInstalled("/");
   };
   const loadProducts = async () => {
@@ -910,8 +908,8 @@ function App() {
           <div className="flex items-start gap-3">
             <img src={appIcon} alt="" className="size-12 rounded-xl object-contain" />
             <div className="min-w-0 flex-1">
-              <h2 className="font-bold text-slate-900">{nativeAppAvailable ? "Ouvrir Mbokamaket" : "Installer Mbokamaket"}</h2>
-              <p className="mt-1 text-sm text-slate-500">{nativeAppAvailable ? "L’application semble déjà installée sur ce téléphone." : "Installez directement l’application Android depuis l’APK."}</p>
+              <h2 className="font-bold text-slate-900">{nativeAppAvailable ? "Ouvrir dans l’application" : "Télécharger Mbokamaket"}</h2>
+              <p className="mt-1 text-sm text-slate-500">{nativeAppAvailable ? "L’application semble déjà installée sur ce téléphone." : "L’application n’est pas détectée. Téléchargez l’APK ; Android vous demandera de confirmer l’installation et, selon vos réglages, d’autoriser cette source."}</p>
             </div>
             <button type="button" onClick={() => setInstallOpen(false)} className="btn btn-ghost btn-circle btn-sm" aria-label="Fermer">×</button>
           </div>
@@ -927,11 +925,11 @@ function App() {
               onClick={registerApkDownload}
               className="btn mt-3 w-full rounded-xl bg-[#143ca8] text-white"
             >
-              Installer l’application Android
+              Télécharger l’APK Android
             </a>
           )}
           <button type="button" onClick={() => setInstallOpen(false)} className="mt-2 w-full text-xs text-slate-400 hover:text-slate-600">
-            Continuer sur le site
+            Rester sur le site
           </button>
         </aside>
       )}
