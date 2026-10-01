@@ -206,6 +206,14 @@ const openAppIfInstalled = (path: string, params?: Record<string, string | undef
   if (!isMobileBrowser() || typeof window === "undefined") return false;
   const webFallback = window.location.href;
   const appUrl = getAppDeepLinkUrl(path, params);
+  const attemptKey = `mbokamaket-app-link-attempt:${appUrl}`;
+
+  try {
+    if (sessionStorage.getItem(attemptKey) === "1") return false;
+    sessionStorage.setItem(attemptKey, "1");
+  } catch {
+    // Continue without a retry guard when browser storage is unavailable.
+  }
 
   try {
     const fallbackFrame = document.createElement("iframe");
@@ -222,6 +230,12 @@ const openAppIfInstalled = (path: string, params?: Record<string, string | undef
   const fallbackTimer = window.setTimeout(() => {
     if (document.visibilityState === "visible") {
       window.location.href = webFallback;
+    } else {
+      try {
+        sessionStorage.removeItem(attemptKey);
+      } catch {
+        // Ignore storage cleanup failures after the app takes focus.
+      }
     }
   }, 1200);
 
@@ -815,11 +829,13 @@ function App() {
   useEffect(() => {
     if (!isMobileBrowser()) return;
     const href = new URL(window.location.href);
-    const productId = href.searchParams.get("produit")
-      || href.pathname.match(/^\/produit\/([^/]+)\/?>$/i)?.[1]
-      || href.pathname.match(/^\/product\/([^/]+)\/?>$/i)?.[1];
+    const directProductId = href.searchParams.get("produit")
+      || href.pathname.match(/^\/product\/([^/]+)\/?$/i)?.[1];
+    const productSlugFromPath = href.pathname.match(/^\/(?:produit|annonce)\/([^/]+)\/?$/i)?.[1];
     const profileId = href.searchParams.get("profil") || href.pathname.match(/^\/profile\/([^/]+)\/?>$/i)?.[1];
-    const hasCallbackCode = Boolean(href.searchParams.get("code") || href.searchParams.get("access_token") || href.searchParams.get("error"));
+    const productId = directProductId || (productSlugFromPath
+      ? products.find((product) => productSlug(product) === decodeURIComponent(productSlugFromPath))?.id
+      : undefined);
 
     if (productId) {
       openAppIfInstalled(`/product/${encodeURIComponent(productId)}`);
@@ -831,10 +847,7 @@ function App() {
       return;
     }
 
-    if (href.pathname === "/auth/callback" || hasCallbackCode || href.searchParams.get("reset") === "1") {
-      openAppIfInstalled("/auth/callback", Object.fromEntries(href.searchParams.entries()));
-    }
-  }, []);
+  }, [products]);
 
   const openManageProducts = () => {
     setProfileOpen(false);

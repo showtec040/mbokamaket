@@ -83,7 +83,7 @@ export default async function handler(request, response) {
     const description = String(product.description || `Découvrez ${title} sur MbokaMarket.`).slice(0, 240);
     const image = firstImage(product.images);
     const canonical = `${SITE_URL}/produit/${encodeURIComponent(productSlug(product))}`;
-    const appUrl = `mbokamaket://product/${encodeURIComponent(id)}`;
+    const appUrl = `mbokamaket://product/${encodeURIComponent(String(product.id))}`;
     const price = Number(product.price || 0).toLocaleString('fr-FR');
     const currency = product.currency === 'USD' ? '$' : product.currency || 'FC';
     const siteProductUrl = `${SITE_URL}/produit/${encodeURIComponent(productSlug(product))}`;
