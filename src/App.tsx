@@ -1028,6 +1028,22 @@ function App() {
     navigate("/annonces");
     window.location.hash = "produits";
   };
+  const returnToAllProducts = () => {
+    setSelectedProduct(null);
+    setSellerFilter(null);
+    setQuery("");
+    setCategory("Toutes");
+    setProductPage(1);
+    setPublishOpen(false);
+    setManageProductsOpen(false);
+    setStockManagementOpen(false);
+    setProfileManagementOpen(false);
+    setNoticeOpen(false);
+    setSelectedNotice(null);
+    setShowProducts(true);
+    navigate("/annonces");
+    window.location.hash = "produits";
+  };
   const openCart = () => {
     setProfileOpen(false);
     setMobileOpen(false);
@@ -1654,7 +1670,7 @@ function App() {
             isFavorite={favoriteIds.includes(selectedProduct.id)}
             onToggleFavorite={() => toggleFavorite(selectedProduct.id)}
             onAddToCart={(variants) => addToCart(selectedProduct, variants)}
-            onClose={goHome}
+            onClose={returnToAllProducts}
             sellerProducts={products.filter((item) => item.sellerId === selectedProduct.sellerId && item.id !== selectedProduct.id)}
             similarProducts={products.filter((item) =>
               item.id !== selectedProduct.id

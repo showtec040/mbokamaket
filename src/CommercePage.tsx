@@ -157,6 +157,7 @@ export default function CommercePage({
   const [locationError, setLocationError] = useState("");
   const [busy, setBusy] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const errorMessageRef = useRef<HTMLParagraphElement | null>(null);
   const [orders, setOrders] = useState<CommerceOrder[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [cancellingOrderId, setCancellingOrderId] = useState<string | null>(null);
@@ -176,6 +177,12 @@ export default function CommercePage({
   useEffect(() => {
     setScreen(view);
   }, [view]);
+
+  useEffect(() => {
+    if (errorMessage && screen === "checkout") {
+      errorMessageRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [errorMessage, screen]);
 
   useEffect(() => {
     if (screen !== "orders" || !activeBuyerId) return;
@@ -282,7 +289,15 @@ export default function CommercePage({
       setErrorMessage("La configuration de la boutique n’est pas disponible.");
       return;
     }
-    if (!checkoutGroup) return;
+    if (!checkoutGroup) {
+      setErrorMessage("Impossible de retrouver les articles à commander. Revenez au panier et réessayez.");
+      return;
+    }
+    if (!event.currentTarget.checkValidity()) {
+      event.currentTarget.reportValidity();
+      setErrorMessage("Certains champs obligatoires sont incomplets ou invalides. Vérifiez les champs signalés.");
+      return;
+    }
     setErrorMessage("");
     const buyerName = guestName.trim();
     const buyerPhone = guestCheckout ? guestPhone.trim() : deliveryPhone.trim();
@@ -329,7 +344,7 @@ export default function CommercePage({
           },
         });
         if (authError) {
-          throw new Error("La vérification de sécurité a échoué. Recommencez le CAPTCHA ou connectez-vous.");
+          throw new Error(`La vérification de sécurité a échoué (${authError.message}). Recommencez le CAPTCHA ou connectez-vous.`);
         }
         if (!authData.user) {
           throw new Error("Impossible de préparer la commande invitée. Connectez-vous pour continuer.");
@@ -474,7 +489,7 @@ export default function CommercePage({
       </header>
 
       <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
-        {errorMessage && <p role="alert" className="mb-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{errorMessage}</p>}
+        {errorMessage && <p ref={errorMessageRef} role="alert" className="mb-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{errorMessage}</p>}
 
         {screen === "cart" && (
           <div className="space-y-4">
@@ -549,7 +564,7 @@ export default function CommercePage({
         )}
 
         {screen === "checkout" && checkoutGroup && (
-          <form onSubmit={(event) => void submitOrder(event)} className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
+          <form noValidate onSubmit={(event) => void submitOrder(event)} className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
             <div className="space-y-5">
               <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
                 <h2 className="font-display text-lg font-bold">Résumé · {checkoutGroup.seller}</h2>
