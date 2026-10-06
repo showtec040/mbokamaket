@@ -5,7 +5,7 @@ const SITE_URL = 'https://www.mbokamaket.com';
 const slugify = (value) => String(value || '')
   .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 70);
-const productPath = (product) => `/annonce/${slugify(product.title) || 'annonce'}-${product.id}`;
+const productPath = (product) => `/produit/${slugify(product.title) || 'annonce'}-${product.id}`;
 const escapeXml = (value) => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&apos;');
 
 export default async function handler(_request, response) {

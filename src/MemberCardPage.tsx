@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+                                                                                                                                                                                                                                                      import { useEffect, useState } from "react";
 import { LoaderCircle, LockKeyhole, ShieldCheck } from "lucide-react";
 import { supabase } from "./lib/supabase";
 
@@ -90,7 +90,7 @@ export default function MemberCardPage({ memberNumber, token }: { memberNumber: 
         ) : member ? (
           <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl shadow-slate-200/60">
             <div className="bg-[#143ca8] px-6 py-8 text-white sm:px-10">
-              <div className="flex items-start justify-between gap-4"><div className="flex items-center gap-4"><div className="h-28 w-24 shrink-0 overflow-hidden rounded-xl border border-white/30 bg-white/10" aria-label="Photo passeport du membre">{photoUrl ? <img src={photoUrl} alt={`Photo passeport de ${member.full_name || "du membre"}`} onError={() => setPhotoUrl("")} className="h-full w-full object-cover" /> : <div className="grid h-full place-items-center px-2 text-center text-[10px] text-blue-100">Photo passeport</div>}</div><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-200">Carte membre MbokaMarket</p><h1 className="mt-2 font-display text-3xl font-bold">{member.full_name || "Membre MbokaMarket"}</h1></div></div><ShieldCheck size={40} className="shrink-0 text-emerald-300" /></div>
+              <div className="flex items-start justify-between gap-4"><div className="flex min-w-0 items-center gap-4"><div className="h-24 w-24 shrink-0 overflow-hidden rounded-full border border-white/30 bg-white/10" aria-label="Photo passeport du membre">{photoUrl ? <img src={photoUrl} alt={`Photo passeport de ${member.full_name || "du membre"}`} onError={() => setPhotoUrl("")} className="h-full w-full object-cover" /> : <div className="grid h-full place-items-center px-2 text-center text-[10px] text-blue-100">Photo passeport</div>}</div><div className="min-w-0"><p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-200">Carte membre MbokaMarket</p><h1 className="mt-2 break-words font-display text-3xl font-bold">{member.full_name || "Membre MbokaMarket"}</h1></div></div><ShieldCheck size={40} className="shrink-0 text-emerald-300" /></div>
               <p className="mt-5 inline-flex rounded-full bg-white/15 px-3 py-1.5 font-mono text-sm font-bold tracking-wider">N° {member.member_number}</p>
             </div>
             <div className="p-6 sm:p-10">

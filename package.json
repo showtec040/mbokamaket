@@ -11,6 +11,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@marsidev/react-turnstile": "^1.6.1",
     "@supabase/supabase-js": "^2.114.0",
     "@tailwindcss/vite": "^4.3.3",
     "daisyui": "^5.7.27",
