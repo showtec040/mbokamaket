@@ -157,6 +157,7 @@ export default function CommercePage({
   const [locationError, setLocationError] = useState("");
   const [busy, setBusy] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [notificationNotice, setNotificationNotice] = useState("");
   const errorMessageRef = useRef<HTMLParagraphElement | null>(null);
   const [orders, setOrders] = useState<CommerceOrder[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
@@ -299,6 +300,7 @@ export default function CommercePage({
       return;
     }
     setErrorMessage("");
+    setNotificationNotice("");
     const buyerName = guestName.trim();
     const buyerPhone = guestCheckout ? guestPhone.trim() : deliveryPhone.trim();
     const phoneDigits = buyerPhone.replace(/\D/g, "");
@@ -344,7 +346,10 @@ export default function CommercePage({
           },
         });
         if (authError) {
-          throw new Error(`La vérification de sécurité a échoué (${authError.message}). Recommencez le CAPTCHA ou connectez-vous.`);
+          const isCaptchaError = /captcha|invalid-input-response/i.test(authError.message);
+          throw new Error(isCaptchaError
+            ? `La vérification CAPTCHA a échoué (${authError.message}). Recommencez le CAPTCHA.`
+            : `Supabase n’a pas pu créer le compte invité (${authError.message}). Vérifiez le déclencheur de profil en base de données.`);
         }
         if (!authData.user) {
           throw new Error("Impossible de préparer la commande invitée. Connectez-vous pour continuer.");
@@ -383,8 +388,9 @@ export default function CommercePage({
         },
         quantity: item.quantity,
       }));
+      const orderId = globalThis.crypto.randomUUID();
       const { error } = await supabase.from("orders").insert({
-        id: globalThis.crypto.randomUUID(),
+        id: orderId,
         buyer_id: buyerId,
         buyer_name: guestCheckout ? buyerName : user?.fullName?.trim() || null,
         seller_id: checkoutGroup.sellerId,
@@ -402,6 +408,26 @@ export default function CommercePage({
         payment_due_at_delivery: simpleRetailSeller,
       });
       if (error) throw error;
+      try {
+        const { data: pushResult, error: pushError } = await supabase.functions.invoke("send-push-notification", {
+          body: {
+            user_id: checkoutGroup.sellerId,
+            notification_type: "ORDER_RECEIVED",
+            event_id: `order_received:${orderId}`,
+            persist_notification: true,
+            tag: "order_received",
+            data: { route: "SellerDashboard", orderId },
+          },
+        });
+        if (pushError) throw pushError;
+        if (pushResult?.ok !== true) {
+          console.warn("[checkout] commande enregistrée, notification push non confirmée", pushResult);
+          setNotificationNotice("Votre commande est enregistrée, mais le vendeur n’a pas pu recevoir la notification push. Il la retrouvera dans ses notifications s’il est connecté.");
+        }
+      } catch (notificationError) {
+        console.error("[checkout] commande enregistrée, échec de la notification vendeur", notificationError);
+        setNotificationNotice("Votre commande est enregistrée, mais la notification du vendeur n’a pas pu être envoyée. Il pourra la retrouver dans ses commandes.");
+      }
       onOrderCreated(checkoutGroup.items);
       setCheckoutKey(null);
       setScreen("orders");
@@ -490,6 +516,7 @@ export default function CommercePage({
 
       <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
         {errorMessage && <p ref={errorMessageRef} role="alert" className="mb-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{errorMessage}</p>}
+        {notificationNotice && <p role="status" className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">{notificationNotice}</p>}
 
         {screen === "cart" && (
           <div className="space-y-4">
