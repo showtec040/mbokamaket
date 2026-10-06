@@ -1361,15 +1361,13 @@ function App() {
           >
             <Menu size={20} />
           </button>
-          <a href="#accueil" onClick={goHome} className="flex items-center gap-2">
-            <span className="grid size-10 place-items-center rounded-xl bg-[#143ca8] text-lg font-black text-white">
-              M
-            </span>
-            <span className="hidden sm:block">
-              <strong className="block font-display text-lg leading-none text-[#143ca8]">
+          <a href="#accueil" onClick={goHome} className="flex shrink-0 items-center gap-2">
+            <img src={appIcon} alt="" className="size-6 object-contain sm:size-10" />
+            <span>
+              <strong className="block font-display text-base font-extrabold leading-none text-[#1677ff] sm:text-lg">
                 Mbokamaket
               </strong>
-              <small className="text-[10px] uppercase tracking-widest text-slate-400">
+              <small className="hidden text-[10px] uppercase tracking-widest text-slate-400 sm:block">
                 Le marché près de vous
               </small>
             </span>
