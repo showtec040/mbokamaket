@@ -22,7 +22,7 @@ const slugify = (value) => String(value || '')
   .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 70);
 const productSlug = (product) => `${slugify(product.title) || 'annonce'}-${product.id}`;
-const shareActions = (appUrl, siteUrl) => `<a class="button app-open" href="${escapeHtml(appUrl)}">Ouvrir dans l’application</a><a class="button secondary" href="${escapeHtml(siteUrl)}">Voir sur le site</a><div class="app-fallback" hidden aria-live="polite"><p class="warning">L’application ne s’est pas ouverte. Téléchargez l’APK ; Android vous demandera de confirmer l’installation et, selon vos réglages, d’autoriser cette source.</p><a class="button" href="${escapeHtml(APK_URL)}" download="Mbokamaket-v1.0.0.apk" type="application/vnd.android.package-archive">Télécharger l’APK Android</a></div>`;
+const shareActions = (appUrl, siteUrl) => `<div class="actions"><a class="button app-open" href="${escapeHtml(appUrl)}">Ouvrir dans l’application</a><a class="button secondary" href="${escapeHtml(siteUrl)}">Voir sur le site</a><div class="app-fallback" hidden aria-live="polite"><p class="warning">L’application ne s’est pas ouverte. Téléchargez l’APK ; Android vous demandera de confirmer l’installation et, selon vos réglages, d’autoriser cette source.</p><a class="button" href="${escapeHtml(APK_URL)}" download="Mbokamaket-v1.0.0.apk" type="application/vnd.android.package-archive">Télécharger l’APK Android</a></div></div>`;
 
 const querySupabase = async (table, id, columns) => {
   try {
@@ -55,7 +55,33 @@ const render = ({ title, description, image, canonical, content, type = 'website
   const safeTitle = escapeHtml(title);
   const safeDescription = escapeHtml(description);
   const safeImage = image ? escapeHtml(image) : '';
-  return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${safeTitle}</title><meta name="description" content="${safeDescription}"><link rel="canonical" href="${escapeHtml(canonical)}"><meta property="og:type" content="${escapeHtml(type)}"><meta property="og:site_name" content="Mbokamaket"><meta property="og:locale" content="fr_CD"><meta property="og:title" content="${safeTitle}"><meta property="og:description" content="${safeDescription}"><meta property="og:url" content="${escapeHtml(canonical)}">${safeImage ? `<meta property="og:image" content="${safeImage}"><meta property="og:image:alt" content="${safeTitle}">` : ''}<meta name="twitter:card" content="${safeImage ? 'summary_large_image' : 'summary'}"><meta name="twitter:title" content="${safeTitle}"><meta name="twitter:description" content="${safeDescription}">${safeImage ? `<meta name="twitter:image" content="${safeImage}">` : ''}<style>body{font-family:system-ui,sans-serif;margin:0;background:#f5f7fb;color:#12213f}.page{max-width:720px;margin:auto;padding:28px 18px}.card{background:#fff;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden}.cover{display:block;width:100%;max-height:420px;object-fit:cover}.body{padding:22px}.eyebrow{color:#2563eb;font-weight:700}.title{font-size:27px}.description{color:#52627a;line-height:1.55}.button{display:inline-block;margin:18px 10px 0 0;padding:12px 17px;border-radius:9px;background:#2563eb;color:#fff;text-decoration:none;font-weight:700}.secondary{background:#e8eefb;color:#1d4ed8}.warning{color:#8a3412;line-height:1.5;margin:18px 0 0}.app-fallback[hidden]{display:none}</style></head><body><main class="page"><section class="card">${content}</section></main><script>(()=>{document.querySelectorAll('.app-open').forEach((link)=>{link.addEventListener('click',(event)=>{event.preventDefault();const fallback=link.parentElement.querySelector('.app-fallback');let wasHidden=false;const onVisibilityChange=()=>{if(document.visibilityState==='hidden'){wasHidden=true;return}if(wasHidden){fallback.hidden=false;document.removeEventListener('visibilitychange',onVisibilityChange)}};document.addEventListener('visibilitychange',onVisibilityChange);window.location.href=link.href;window.setTimeout(()=>{if(document.visibilityState==='visible'){fallback.hidden=false;document.removeEventListener('visibilitychange',onVisibilityChange)}},2000)})})})()</script></body></html>`;
+  return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${safeTitle}</title><meta name="description" content="${safeDescription}"><link rel="canonical" href="${escapeHtml(canonical)}"><meta property="og:type" content="${escapeHtml(type)}"><meta property="og:site_name" content="Mbokamaket"><meta property="og:locale" content="fr_CD"><meta property="og:title" content="${safeTitle}"><meta property="og:description" content="${safeDescription}"><meta property="og:url" content="${escapeHtml(canonical)}">${safeImage ? `<meta property="og:image" content="${safeImage}"><meta property="og:image:alt" content="${safeTitle}">` : ''}<meta name="twitter:card" content="${safeImage ? 'summary_large_image' : 'summary'}"><meta name="twitter:title" content="${safeTitle}"><meta name="twitter:description" content="${safeDescription}">${safeImage ? `<meta name="twitter:image" content="${safeImage}">` : ''}<style>
+    *{box-sizing:border-box}
+    body{font-family:system-ui,sans-serif;margin:0;background:#f5f7fb;color:#12213f}
+    .page{max-width:720px;margin:auto;padding:28px 18px}
+    .card{background:#fff;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden}
+    .cover{display:block;width:100%;max-height:420px;object-fit:cover}
+    .body{padding:22px}
+    .eyebrow{color:#2563eb;font-weight:700}
+    .title{font-size:27px;line-height:1.2;overflow-wrap:anywhere}
+    .description{color:#52627a;line-height:1.55}
+    .actions{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+    .button{display:inline-block;margin:18px 0 0;padding:12px 17px;border-radius:9px;background:#2563eb;color:#fff;text-decoration:none;font-weight:700}
+    .secondary{background:#e8eefb;color:#1d4ed8}
+    .warning{color:#8a3412;line-height:1.5;margin:18px 0 0}
+    .app-fallback{flex-basis:100%}
+    .app-fallback[hidden]{display:none}
+    @media(max-width:560px){
+      .page{padding:14px 12px}
+      .card{border-radius:18px}
+      .cover{height:min(58svh,420px);min-height:220px}
+      .body{padding:20px 18px 24px}
+      .title{font-size:clamp(25px,7vw,32px)}
+      .actions{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;margin-top:20px}
+      .button{width:100%;margin:0;padding:14px 16px;text-align:center}
+      .app-fallback .button{margin-top:12px}
+    }
+    </style></head><body><main class="page"><section class="card">${content}</section></main><script>(()=>{document.querySelectorAll('.app-open').forEach((link)=>{link.addEventListener('click',(event)=>{event.preventDefault();const fallback=link.parentElement.querySelector('.app-fallback');let wasHidden=false;const onVisibilityChange=()=>{if(document.visibilityState==='hidden'){wasHidden=true;return}if(wasHidden){fallback.hidden=false;document.removeEventListener('visibilitychange',onVisibilityChange)}};document.addEventListener('visibilitychange',onVisibilityChange);window.location.href=link.href;window.setTimeout(()=>{if(document.visibilityState==='visible'){fallback.hidden=false;document.removeEventListener('visibilitychange',onVisibilityChange)}},2000)})})})()</script></body></html>`;
 };
 
 const sendHtml = (response, statusCode, html) => {
