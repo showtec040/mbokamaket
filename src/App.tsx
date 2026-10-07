@@ -1930,7 +1930,16 @@ function App() {
                       </button>
                     </div>
                     <div className="flex min-w-0 flex-1 flex-col p-2 sm:p-4">
-                      <h3 className="line-clamp-2 min-h-9 text-xs font-bold leading-4 sm:min-h-0 sm:text-base sm:leading-normal">{item.title}</h3>
+                      <div className="flex min-w-0 items-start gap-1">
+                        <h3 className="line-clamp-2 min-h-9 min-w-0 flex-1 text-xs font-bold leading-4 sm:min-h-0 sm:text-base sm:leading-normal">{item.title}</h3>
+                        {item.verified && (
+                          <span className="badge badge-xs shrink-0 gap-0.5 border-0 bg-[#1877f2] px-1 text-white sm:badge-sm sm:gap-1 sm:px-2">
+                            <ShieldCheck size={11} className="sm:hidden" />
+                            <ShieldCheck size={13} className="hidden sm:block" />
+                            <span className="hidden sm:inline">Vérifié</span>
+                          </span>
+                        )}
+                      </div>
                       <PriceDisplay product={item} compact dense />
                       <p className="mt-1 flex min-w-0 items-center gap-1 truncate text-[10px] leading-4 text-slate-500 sm:text-xs">
                         <MapPin size={12} className="shrink-0 sm:size-[13px]" />
@@ -2145,7 +2154,7 @@ function App() {
                     <div className="flex min-w-0 items-start gap-1.5">
                       <h3 className="line-clamp-2 min-h-9 min-w-0 flex-1 text-sm font-bold leading-4 sm:min-h-0 sm:text-base sm:leading-normal">{item.title}</h3>
                       {item.verified && (
-                        <span className="badge badge-xs shrink-0 gap-0.5 border-0 bg-emerald-500 px-1 text-white sm:badge-sm sm:gap-1 sm:px-2">
+                        <span className="badge badge-xs shrink-0 gap-0.5 border-0 bg-[#1877f2] px-1 text-white sm:badge-sm sm:gap-1 sm:px-2">
                           <ShieldCheck size={11} className="sm:hidden" /><ShieldCheck size={13} className="hidden sm:block" />
                           <span className="hidden sm:inline">Vérifié</span>
                         </span>
