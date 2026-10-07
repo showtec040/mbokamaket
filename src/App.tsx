@@ -7,7 +7,6 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardList,
-  Download,
   Eye,
   EyeOff,
   Gamepad2,
