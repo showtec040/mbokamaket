@@ -482,6 +482,9 @@ function App() {
   const [category, setCategory] = useState("Toutes");
   const [productSort, setProductSort] = useState<ProductSort>("recent");
   const [productPage, setProductPage] = useState(1);
+  const [mobileProductLimit, setMobileProductLimit] = useState(12);
+  const [homeProductPage, setHomeProductPage] = useState(1);
+  const [mobileHomeProductLimit, setMobileHomeProductLimit] = useState(8);
   const [showProducts, setShowProducts] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [notices, setNotices] = useState<Notice[]>([]);
@@ -530,6 +533,7 @@ function App() {
     }
   }, [cartItems]);
   const currentPageSeo = pageSeo(location.pathname);
+  const downloadPage = location.pathname.replace(/\/+$/, "") === "/telechargement";
   const playStore = import.meta.env.VITE_PLAY_STORE_URL as string | undefined;
   const appStore = import.meta.env.VITE_APP_STORE_URL as string | undefined;
   const apk = (import.meta.env.VITE_APK_URL as string | undefined) || DEFAULT_APK_URL;
@@ -941,10 +945,12 @@ function App() {
   const productsPerPage = 12;
   const pageCount = Math.ceil(sortedProducts.length / productsPerPage);
   const currentProductPage = Math.min(productPage, Math.max(pageCount, 1));
-  const visibleProducts = sortedProducts.slice(
-    (currentProductPage - 1) * productsPerPage,
-    currentProductPage * productsPerPage,
-  );
+  const visibleProducts = isMobileViewport
+    ? sortedProducts.slice(0, mobileProductLimit)
+    : sortedProducts.slice(
+        (currentProductPage - 1) * productsPerPage,
+        currentProductPage * productsPerPage,
+      );
   const paginationItems = useMemo(() => {
     if (pageCount <= 7) return Array.from({ length: pageCount }, (_, index) => index + 1);
     const start = Math.max(2, currentProductPage - 1);
@@ -958,6 +964,7 @@ function App() {
   }, [currentProductPage, pageCount]);
   useEffect(() => {
     setProductPage(1);
+    setMobileProductLimit(12);
   }, [query, category, sellerFilter, productSort]);
   const visibleNotices = notices.filter((item) => !isSentMessageNotification(item));
   const unreadNoticeCount = visibleNotices.filter((item) => item.read === false).length;
@@ -991,7 +998,32 @@ function App() {
     ),
     [products],
   );
-  const homeProducts = useMemo(() => products.slice(0, 3), [products]);
+  const homeProducts = useMemo(() => [...products].sort((first, second) => {
+    const priority = (product: Product) =>
+      product.featured || product.promoted
+        ? 0
+        : product.originalPrice !== null && product.originalPrice > product.price
+          ? 1
+          : 2;
+    const priorityDifference = priority(first) - priority(second);
+    if (priorityDifference) return priorityDifference;
+    const firstTimestamp = first.createdAt ? new Date(first.createdAt).getTime() : 0;
+    const secondTimestamp = second.createdAt ? new Date(second.createdAt).getTime() : 0;
+    return secondTimestamp - firstTimestamp;
+  }), [products]);
+  const homeProductsPerPage = 12;
+  const homePageCount = Math.ceil(homeProducts.length / homeProductsPerPage);
+  const currentHomeProductPage = Math.min(homeProductPage, Math.max(homePageCount, 1));
+  const visibleHomeProducts = isMobileViewport
+    ? homeProducts.slice(0, mobileHomeProductLimit)
+    : homeProducts.slice(
+        (currentHomeProductPage - 1) * homeProductsPerPage,
+        currentHomeProductPage * homeProductsPerPage,
+      );
+  useEffect(() => {
+    setHomeProductPage(1);
+    setMobileHomeProductLimit(8);
+  }, [homeProducts.length]);
   const advertisedProducts = useMemo(
     () => products.filter((item) => item.featured || item.promoted).length > 0
       ? products.filter((item) => item.featured || item.promoted).slice(0, 6)
@@ -1027,6 +1059,20 @@ function App() {
     setShowProducts(true);
     navigate("/annonces");
     window.location.hash = "produits";
+  };
+  const openDownload = () => {
+    setMobileOpen(false);
+    setProfileOpen(false);
+    setPublishOpen(false);
+    setManageProductsOpen(false);
+    setStockManagementOpen(false);
+    setProfileManagementOpen(false);
+    setNoticeOpen(false);
+    setSelectedNotice(null);
+    setSelectedProduct(null);
+    setShowProducts(false);
+    navigate("/telechargement");
+    window.scrollTo({ top: 0 });
   };
   const returnToAllProducts = () => {
     setSelectedProduct(null);
@@ -1165,6 +1211,9 @@ function App() {
       setProfileManagementOpen(hash === "#mon-profil");
       setAuthOpen(hash === "#connexion" || hash === "#inscription");
       setLegalPage(hash === "#conditions" ? "conditions" : hash === "#confidentialite" ? "confidentialite" : null);
+      if (hash === "#telechargement" && location.pathname !== "/telechargement") {
+        navigate("/telechargement");
+      }
       if (["#accueil", "#produits", "#notifications", "#telechargement"].includes(hash)) {
         setSelectedProduct(null);
       }
@@ -1177,7 +1226,7 @@ function App() {
       window.removeEventListener("popstate", handleHashChange);
       window.removeEventListener("hashchange", handleHashChange);
     };
-  }, []);
+  }, [location.pathname, navigate]);
   useEffect(() => {
     const productId = new URLSearchParams(window.location.search).get("produit");
     const productPathMatch = window.location.pathname.match(/^\/produit\/([^/]+)\/?$/i)
@@ -1475,7 +1524,7 @@ function App() {
             >
               <UserRound size={20} />
             </button>
-            <a href="#telechargement" className="btn btn-primary ml-1 whitespace-nowrap rounded-xl bg-[#143ca8]">
+            <a href="/telechargement" onClick={(event) => { event.preventDefault(); openDownload(); }} className="btn btn-primary ml-1 whitespace-nowrap rounded-xl bg-[#143ca8]">
               Télécharger l’application
             </a>
           </nav>
@@ -1590,8 +1639,8 @@ function App() {
               <ClipboardList size={17} /> Mes commandes
             </button>
             <a
-              href="#telechargement"
-              onClick={() => setMobileOpen(false)}
+              href="/telechargement"
+              onClick={(event) => { event.preventDefault(); openDownload(); }}
               className="btn btn-ghost btn-sm min-h-9 h-9 w-full justify-start"
             >
               Télécharger l’application
@@ -1680,9 +1729,7 @@ function App() {
             )}
             onSelectSellerProduct={openProduct}
             onDownload={() => {
-              setSelectedProduct(null);
-              setShowProducts(false);
-              window.location.hash = "telechargement";
+              openDownload();
             }}
           />
         )}
@@ -1759,9 +1806,9 @@ function App() {
             </section>
           </div>
         )}
-        <section className={`${showProducts || noticeOpen || selectedProduct || publishOpen ? "hidden" : ""} hero-panel relative isolate mt-4 overflow-hidden rounded-[2rem] bg-[#143ca8] text-white shadow-2xl shadow-[#143ca8]/15 sm:mt-6`}>
+        <section className={`${downloadPage || showProducts || noticeOpen || selectedProduct || publishOpen ? "hidden" : ""} hero-panel relative isolate mt-4 overflow-hidden rounded-[2rem] bg-[#143ca8] text-white shadow-2xl shadow-[#143ca8]/15 sm:mt-6`}>
           <div
-            className="hero-ad-panel relative flex min-h-[27rem] cursor-pointer flex-col justify-between overflow-hidden bg-[#f5f8ff] p-5 text-slate-900 sm:min-h-[30rem] sm:p-8 lg:min-h-[19rem] lg:p-5"
+            className="hero-ad-panel relative flex min-h-[18rem] cursor-pointer flex-col justify-between overflow-hidden bg-[#f5f8ff] p-3 text-slate-900 sm:min-h-[30rem] sm:p-8 lg:min-h-[19rem] lg:p-5"
             onClick={openProducts}
             aria-label="Afficher tous les produits"
               onMouseEnter={() => setHeroPaused(true)}
@@ -1804,28 +1851,28 @@ function App() {
                       <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#143ca8]">À la une</p>
                       <p className="mt-1 text-sm text-slate-500">Découvrez une annonce près de chez vous</p>
                     </div>
-                    <span className="rounded-full bg-[#dbe5ff] px-3 py-1 text-xs font-bold text-[#143ca8]">{heroProduct.category}</span>
+                    <span className="max-w-[40%] truncate rounded-full bg-[#dbe5ff] px-2.5 py-1 text-[10px] font-bold text-[#143ca8] sm:max-w-none sm:px-3 sm:text-xs">{heroProduct.category}</span>
                   </div>
                   <button
                     type="button"
                     onClick={(event) => { event.stopPropagation(); openProduct(heroProduct); }}
-                    className="group mt-5 flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl bg-white text-left shadow-lg transition hover:-translate-y-1 hover:shadow-xl"
+                    className="group mt-3 flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl bg-white text-left shadow-lg transition hover:-translate-y-1 hover:shadow-xl sm:mt-5 sm:rounded-2xl"
                     aria-label={`Voir le produit ${heroProduct.title}`}
                   >
-                    <div className="relative aspect-[16/7] flex-none bg-slate-100">
+                    <div className="relative aspect-[16/5] flex-none bg-slate-100 sm:aspect-[16/7]">
                       {heroProduct.image ? <img src={heroProduct.image} alt={heroProduct.title} loading="lazy" decoding="async" className="h-full w-full object-cover transition duration-500 group-hover:scale-105" /> : <div className="grid h-full place-items-center text-slate-400">Pas d’image</div>}
                       {(heroProduct.featured || heroProduct.promoted) && <span className="badge absolute left-3 top-3 border-0 bg-orange-400 text-white">Annonce sponsorisée</span>}
                     </div>
-                    <div className="p-4">
-                      <h2 className="line-clamp-1 text-lg font-bold">{heroProduct.title}</h2>
+                    <div className="p-3 sm:p-4">
+                      <h2 className="line-clamp-1 text-base font-bold sm:text-lg">{heroProduct.title}</h2>
                       <PriceDisplay product={heroProduct} compact />
-                      <div className="mt-2 flex items-center justify-between gap-3 text-xs text-slate-500">
+                      <div className="mt-1.5 flex items-center justify-between gap-3 text-[11px] text-slate-500 sm:mt-2 sm:text-xs">
                         <span className="flex items-center gap-1"><MapPin size={13} />{heroProduct.location}</span>
                         <span className="font-bold text-[#143ca8]">Voir le détail</span>
                       </div>
                     </div>
                   </button>
-                  {isMobileViewport && <div className="mt-4 flex items-center justify-between">
+                  {isMobileViewport && <div className="mt-2 flex items-center justify-between sm:mt-4">
                     <div className="flex gap-1.5" aria-label="Position dans les annonces">
                       {advertisedProducts.map((item, index) => <button key={item.id} type="button" onClick={(event) => { event.stopPropagation(); setHeroProductIndex(index); }} aria-label={`Afficher ${item.title}`} className={`h-2 rounded-full transition-all ${index === heroProductIndex % advertisedProducts.length ? "w-7 bg-[#143ca8]" : "w-2 bg-slate-300"}`} />)}
                     </div>
@@ -1835,42 +1882,8 @@ function App() {
               ) : <div className="grid flex-1 place-items-center text-center text-slate-500"><div><Search className="mx-auto mb-3 text-slate-300" size={32} /><p>Les annonces publicitaires apparaîtront ici.</p></div></div>}
           </div>
         </section>
-        <section
-          className={`${showProducts || noticeOpen || selectedProduct || publishOpen || manageProductsOpen || profileManagementOpen ? "hidden" : ""} mt-12 overflow-hidden rounded-[2rem] bg-[#eaf0ff] sm:mt-16`}
-        >
-          <div className="grid items-center gap-8 px-6 py-8 sm:px-12 sm:py-10 lg:grid-cols-[0.9fr_1.1fr] lg:gap-12">
-            <div>
-              <div className="flex items-center gap-3">
-                <img src={appIcon} alt="" className="size-12 rounded-xl shadow-md" />
-                <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#143ca8]">
-                  L’expérience Mbokamaket
-                </p>
-              </div>
-                <h2 className="mt-4 font-display text-3xl font-bold leading-tight sm:text-4xl">
-                <span className="animated-slogan" aria-label="Achetez, vendez et découvrez près de chez vous.">
-                  <span className="slogan-line slogan-line-one">Achetez, vendez</span>
-                  <span className="slogan-line slogan-line-two">et découvrez près</span>
-                  <span className="slogan-line slogan-line-three">de chez vous.</span>
-                </span>
-              </h2>
-              <p className="mt-4 max-w-lg leading-7 text-slate-600">
-                Parcourez les annonces, consultez les profils des vendeurs et
-                contactez-les directement depuis une application pensée pour
-                votre quotidien.
-              </p>
-              <a href="#telechargement" className="btn btn-primary mt-7 rounded-xl bg-[#143ca8]">
-                Découvrir l’application <Download size={17} />
-              </a>
-            </div>
-            <div className="grid grid-cols-3 items-end gap-3 sm:gap-5">
-              <AppPreview image={appProducts} label="Trouvez" className="-rotate-2" />
-              <AppPreview image={appProductDetails} label="Détaillez" className="-translate-y-5" />
-              <AppPreview image={appSellerProfile} label="Faites confiance" className="rotate-2" />
-            </div>
-          </div>
-        </section>
-        {!showProducts && !noticeOpen && !selectedProduct && !publishOpen && !manageProductsOpen && !profileManagementOpen && (
-          <section className="mt-5 sm:mt-8">
+        {!downloadPage && !showProducts && !noticeOpen && !selectedProduct && !publishOpen && !manageProductsOpen && !profileManagementOpen && (
+          <section id="home-products" className="mt-5 sm:mt-8">
             <div>
               <div>
                 <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#143ca8]">
@@ -1886,15 +1899,15 @@ function App() {
                 <LoaderCircle className="animate-spin text-[#143ca8]" />
               </div>
             ) : homeProducts.length > 0 ? (
-              <div className="mt-5 grid gap-4 sm:grid-cols-3">
-                {homeProducts.map((item) => (
+              <div className="mt-5 grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-4">
+                {visibleHomeProducts.map((item) => (
                   <article
                     key={item.id}
                     onClick={() => openProduct(item)}
                     onKeyDown={(event) => event.key === "Enter" && openProduct(item)}
                     role="button"
                     tabIndex={0}
-                    className="product-card cursor-pointer overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-lg sm:rounded-2xl"
+                    className="product-card flex h-full min-w-0 cursor-pointer flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-lg sm:rounded-2xl"
                   >
                     <div className="relative aspect-[16/9] bg-slate-100 sm:aspect-[4/3]">
                       {item.image ? (
@@ -1902,20 +1915,27 @@ function App() {
                       ) : (
                         <div className="grid h-full place-items-center text-slate-400">Pas d’image</div>
                       )}
+                      {item.originalPrice !== null && item.originalPrice > item.price && (
+                        <span className="badge badge-xs absolute left-1.5 top-1.5 border-0 bg-orange-500 px-1.5 text-[9px] font-bold text-white shadow-sm sm:left-3 sm:top-3 sm:badge-sm sm:px-2">
+                          Prix réduit
+                        </span>
+                      )}
                       <button
                         type="button"
                         onClick={(event) => { event.stopPropagation(); toggleFavorite(item.id); }}
-                        className="btn btn-circle btn-sm absolute right-3 top-3 border-0 bg-white/90 text-[#143ca8] shadow-md"
+                        className="btn btn-circle btn-xs absolute right-1.5 top-1.5 border-0 bg-white/90 text-[#143ca8] shadow-md sm:btn-sm sm:right-3 sm:top-3"
                         aria-label={favoriteIds.includes(item.id) ? `Retirer ${item.title} des favoris` : `Ajouter ${item.title} aux favoris`}
                       >
-                        <Heart size={17} fill={favoriteIds.includes(item.id) ? "currentColor" : "none"} />
+                        <Heart size={14} className="sm:hidden" fill={favoriteIds.includes(item.id) ? "currentColor" : "none"} />
+                        <Heart size={17} className="hidden sm:block" fill={favoriteIds.includes(item.id) ? "currentColor" : "none"} />
                       </button>
                     </div>
-                    <div className="p-4">
-                      <h3 className="line-clamp-2 font-bold">{item.title}</h3>
-                      <PriceDisplay product={item} compact />
-                      <p className="mt-1 flex items-center gap-1 text-xs text-slate-500">
-                        <MapPin size={13} /> {item.location}
+                    <div className="flex min-w-0 flex-1 flex-col p-2 sm:p-4">
+                      <h3 className="line-clamp-2 min-h-9 text-xs font-bold leading-4 sm:min-h-0 sm:text-base sm:leading-normal">{item.title}</h3>
+                      <PriceDisplay product={item} compact dense />
+                      <p className="mt-1 flex min-w-0 items-center gap-1 truncate text-[10px] leading-4 text-slate-500 sm:text-xs">
+                        <MapPin size={12} className="shrink-0 sm:size-[13px]" />
+                        <span className="truncate">{item.location}</span>
                       </p>
                       {item.status === "active" && item.sellerId !== user?.id && (
                         <button
@@ -1925,9 +1945,11 @@ function App() {
                             if (getSelectableSpecifications(item.specifications).length) openProduct(item);
                             else addToCart(item);
                           }}
-                          className="btn mt-3 w-full border-[#143ca8] bg-[#143ca8] text-white hover:bg-[#102f85]"
+                          className="btn btn-sm mt-auto min-h-8 h-8 w-full gap-1 border-[#143ca8] bg-[#143ca8] px-1 text-[10px] text-white hover:bg-[#102f85] sm:btn-md sm:mt-3 sm:min-h-12 sm:h-auto sm:gap-2 sm:px-4 sm:text-sm"
                         >
-                          <ShoppingCart size={16} /> Ajouter au panier
+                          <ShoppingCart size={13} className="shrink-0 sm:size-4" />
+                          <span className="sm:hidden">Panier</span>
+                          <span className="hidden sm:inline">Ajouter au panier</span>
                         </button>
                       )}
                     </div>
@@ -1939,12 +1961,58 @@ function App() {
                 Aucune annonce disponible pour le moment.
               </p>
             )}
-            {homeProducts.length > 0 && !loading && (
+            {homeProducts.length > 0 && !loading && isMobileViewport && mobileHomeProductLimit < homeProducts.length && (
               <div className="mt-6 flex justify-center">
-                <button onClick={openProducts} className="btn btn-ghost font-display text-lg font-extrabold text-[#143ca8] underline decoration-2 underline-offset-4 sm:text-2xl">
-                  Voir plus de produits disponibles <Search size={17} />
+                <button
+                  type="button"
+                  onClick={() => setMobileHomeProductLimit((limit) => Math.min(limit + 8, homeProducts.length))}
+                  className="btn rounded-xl border-[#143ca8] bg-white px-8 text-[#143ca8] hover:bg-blue-50"
+                >
+                  Voir plus
                 </button>
               </div>
+            )}
+            {homePageCount > 1 && !loading && !isMobileViewport && (
+              <nav className="mt-6 flex justify-center" aria-label="Pagination des produits à découvrir">
+                <div className="flex max-w-full items-center gap-1 overflow-x-auto rounded-xl bg-white p-1 shadow-sm ring-1 ring-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHomeProductPage((page) => Math.max(1, page - 1));
+                      document.getElementById("home-products")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    }}
+                    disabled={currentHomeProductPage <= 1}
+                    className="btn btn-sm btn-ghost shrink-0"
+                  >
+                    Précédent
+                  </button>
+                  {Array.from({ length: homePageCount }, (_, index) => index + 1).map((page) => (
+                    <button
+                      key={page}
+                      type="button"
+                      onClick={() => {
+                        setHomeProductPage(page);
+                        document.getElementById("home-products")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                      }}
+                      aria-current={currentHomeProductPage === page ? "page" : undefined}
+                      className={`btn btn-sm shrink-0 ${currentHomeProductPage === page ? "border-[#143ca8] bg-[#143ca8] text-white" : "btn-ghost"}`}
+                    >
+                      {page}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHomeProductPage((page) => Math.min(homePageCount, page + 1));
+                      document.getElementById("home-products")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    }}
+                    disabled={currentHomeProductPage >= homePageCount}
+                    className="btn btn-sm btn-ghost shrink-0"
+                  >
+                    Suivant
+                  </button>
+                </div>
+              </nav>
             )}
           </section>
         )}
@@ -2002,7 +2070,7 @@ function App() {
             <div className="mt-2 flex flex-col gap-2 rounded-xl border border-slate-100 bg-white p-2.5 sm:mt-4 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:p-3">
               <p className="text-xs text-slate-500 sm:text-sm">
                 {filteredProducts.length} annonce{filteredProducts.length === 1 ? "" : "s"}
-                {pageCount > 1 ? ` · page ${currentProductPage} sur ${pageCount}` : ""}
+                {pageCount > 1 && !isMobileViewport ? ` · page ${currentProductPage} sur ${pageCount}` : ""}
               </p>
               <label className="flex w-full flex-col items-stretch gap-1 text-xs font-semibold text-slate-600 sm:w-auto sm:flex-row sm:items-center sm:gap-2 sm:text-sm">
                 <span className="sm:whitespace-nowrap">Trier les produits</span>
@@ -2038,7 +2106,7 @@ function App() {
                   onKeyDown={(event) => event.key === "Enter" && openProduct(item)}
                   role="button"
                   tabIndex={0}
-                  className="product-card cursor-pointer overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-lg"
+                  className="product-card flex h-full min-w-0 cursor-pointer flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-lg"
                 >
                   <div className="relative aspect-[16/9] bg-slate-100 sm:aspect-[4/3]">
                     {item.image ? (
@@ -2053,6 +2121,11 @@ function App() {
                       <div className="grid h-full place-items-center text-slate-400">
                         Pas d’image
                       </div>
+                    )}
+                    {item.originalPrice !== null && item.originalPrice > item.price && (
+                      <span className={`badge badge-xs absolute ${item.featured || item.promoted ? "left-1.5 top-7 sm:left-3 sm:top-10" : "left-1.5 top-1.5 sm:left-3 sm:top-3"} border-0 bg-orange-500 px-1.5 text-[9px] font-bold text-white shadow-sm sm:badge-sm sm:px-2`}>
+                        Prix réduit
+                      </span>
                     )}
                     {(item.featured || item.promoted) && (
                       <span className="badge badge-xs absolute left-1.5 top-1.5 border-0 bg-orange-400 text-white sm:badge-sm sm:left-3 sm:top-3">
@@ -2069,7 +2142,7 @@ function App() {
                       <Heart size={17} className="hidden sm:block" fill={favoriteIds.includes(item.id) ? "currentColor" : "none"} />
                     </button>
                   </div>
-                  <div className="p-2 sm:p-4">
+                  <div className="flex min-w-0 flex-1 flex-col p-2 sm:p-4">
                     <div className="flex min-w-0 items-start gap-1.5">
                       <h3 className="line-clamp-2 min-h-9 min-w-0 flex-1 text-sm font-bold leading-4 sm:min-h-0 sm:text-base sm:leading-normal">{item.title}</h3>
                       {item.verified && (
@@ -2079,8 +2152,8 @@ function App() {
                         </span>
                       )}
                     </div>
-                    <div className="mt-1 [&>div]:mt-0 [&_span:first-child]:text-base sm:mt-0 sm:[&>div]:mt-2 sm:[&_span:first-child]:text-lg">
-                      <PriceDisplay product={item} compact />
+                    <div className="mt-1 min-w-0 sm:mt-0">
+                      <PriceDisplay product={item} compact dense />
                     </div>
                     <p className="mt-1 flex min-w-0 items-center gap-1 truncate text-[11px] leading-4 text-slate-500 sm:text-xs">
                       <MapPin size={12} className="shrink-0 sm:size-[13px]" />
@@ -2102,7 +2175,7 @@ function App() {
                           if (getSelectableSpecifications(item.specifications).length) openProduct(item);
                           else addToCart(item);
                         }}
-                        className="btn btn-sm mt-2 min-h-8 h-8 w-full gap-1 border-[#143ca8] bg-[#143ca8] px-1 text-xs text-white hover:bg-[#102f85] sm:btn-md sm:mt-4 sm:min-h-12 sm:h-auto sm:gap-2 sm:px-4 sm:text-sm"
+                        className="btn btn-sm mt-auto min-h-8 h-8 w-full gap-1 border-[#143ca8] bg-[#143ca8] px-1 text-xs text-white hover:bg-[#102f85] sm:btn-md sm:mt-4 sm:min-h-12 sm:h-auto sm:gap-2 sm:px-4 sm:text-sm"
                       >
                         <ShoppingCart size={14} className="shrink-0 sm:size-4" />
                         <span className="sm:hidden">Panier</span>
@@ -2114,7 +2187,18 @@ function App() {
               ))}
             </div>
           )}
-          {showProducts && !loading && sortedProducts.length > 0 && (
+          {showProducts && !loading && isMobileViewport && visibleProducts.length < sortedProducts.length && (
+            <div className="mt-6 flex justify-center">
+              <button
+                type="button"
+                onClick={() => setMobileProductLimit((limit) => Math.min(limit + productsPerPage, sortedProducts.length))}
+                className="btn rounded-xl border-[#143ca8] bg-white px-8 text-[#143ca8] hover:bg-blue-50"
+              >
+                Voir plus
+              </button>
+            </div>
+          )}
+          {showProducts && !loading && sortedProducts.length > 0 && !isMobileViewport && (
             <nav className="mt-6 flex flex-wrap items-center justify-center gap-1.5" aria-label="Pagination des annonces">
               <button
                 type="button"
@@ -2157,44 +2241,77 @@ function App() {
             </nav>
           )}
         </section>
-        <section
-          id="telechargement"
-          className={`${showProducts || noticeOpen || selectedProduct || publishOpen || manageProductsOpen || profileManagementOpen ? "hidden" : ""} download-section mt-8 border-t border-slate-200 pt-5 sm:mt-16 sm:pt-10`}
-        >
-          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#143ca8] sm:text-xs sm:tracking-[0.18em]">
-            Toujours avec vous
-          </p>
-          <h2 className="mt-1.5 font-display text-xl font-bold sm:mt-2 sm:text-3xl">
-            Téléchargez Mbokamaket
-          </h2>
-          <p className="mt-1.5 max-w-xl text-xs leading-5 text-slate-500 sm:mt-3 sm:text-base sm:leading-normal">
-            Retrouvez toutes les fonctionnalités de l’application sur votre
-            téléphone.
-          </p>
-          <div className="mt-4 grid gap-2.5 sm:mt-7 sm:gap-4 md:grid-cols-3">
-            <DownloadCard
-              icon={AppStoreLogo}
-              title="App Store"
-              subtitle="Pour iPhone et iPad"
-              href={appStore}
-            />
-            <DownloadCard
-              icon={GooglePlayLogo}
-              title="Google Play"
-              subtitle="Pour Android"
-              href={playStore}
-            />
-            <DownloadCard
-              icon={ApkLogo}
-              title="APK Android"
-              subtitle="Installation directe"
-              href={apkDownloadUrl}
-              download
-              onDownload={registerApkDownload}
-              downloadCount={apkDownloadCount}
-            />
-          </div>
-        </section>
+        {downloadPage && (
+          <>
+            <section className="mt-5 overflow-hidden rounded-[2rem] bg-[#eaf0ff] sm:mt-8">
+              <div className="grid items-center gap-8 px-6 py-8 sm:px-12 sm:py-10 lg:grid-cols-[0.9fr_1.1fr] lg:gap-12">
+                <div>
+                  <div className="flex items-center gap-3">
+                    <img src={appIcon} alt="" className="size-12 rounded-xl shadow-md" />
+                    <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#143ca8]">
+                      L’expérience Mbokamaket
+                    </p>
+                  </div>
+                  <h1 className="mt-4 font-display text-3xl font-bold leading-tight sm:text-4xl">
+                    <span className="animated-slogan" aria-label="Achetez, vendez et découvrez près de chez vous.">
+                      <span className="slogan-line slogan-line-one">Achetez, vendez</span>
+                      <span className="slogan-line slogan-line-two">et découvrez près</span>
+                      <span className="slogan-line slogan-line-three">de chez vous.</span>
+                    </span>
+                  </h1>
+                  <p className="mt-4 max-w-lg leading-7 text-slate-600">
+                    Parcourez les annonces, consultez les profils des vendeurs et
+                    contactez-les directement depuis une application pensée pour
+                    votre quotidien.
+                  </p>
+                </div>
+                <div className="grid grid-cols-3 items-end gap-3 sm:gap-5">
+                  <AppPreview image={appProducts} label="Trouvez" className="-rotate-2" />
+                  <AppPreview image={appProductDetails} label="Détaillez" className="-translate-y-5" />
+                  <AppPreview image={appSellerProfile} label="Faites confiance" className="rotate-2" />
+                </div>
+              </div>
+            </section>
+            <section
+              id="telechargement"
+              className="download-section mt-8 border-t border-slate-200 pt-5 sm:mt-12 sm:pt-10"
+            >
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#143ca8] sm:text-xs sm:tracking-[0.18em]">
+                Toujours avec vous
+              </p>
+              <h2 className="mt-1.5 font-display text-xl font-bold sm:mt-2 sm:text-3xl">
+                Téléchargez Mbokamaket
+              </h2>
+              <p className="mt-1.5 max-w-xl text-xs leading-5 text-slate-500 sm:mt-3 sm:text-base sm:leading-normal">
+                Retrouvez toutes les fonctionnalités de l’application sur votre
+                téléphone.
+              </p>
+              <div className="mt-4 grid gap-2.5 sm:mt-7 sm:gap-4 md:grid-cols-3">
+                <DownloadCard
+                  icon={AppStoreLogo}
+                  title="App Store"
+                  subtitle="Pour iPhone et iPad"
+                  href={appStore}
+                />
+                <DownloadCard
+                  icon={GooglePlayLogo}
+                  title="Google Play"
+                  subtitle="Pour Android"
+                  href={playStore}
+                />
+                <DownloadCard
+                  icon={ApkLogo}
+                  title="APK Android"
+                  subtitle="Installation directe"
+                  href={apkDownloadUrl}
+                  download
+                  onDownload={registerApkDownload}
+                  downloadCount={apkDownloadCount}
+                />
+              </div>
+            </section>
+          </>
+        )}
       </main>
       {!profileManagementOpen && <Footer
         contactEmail={contactEmail}
@@ -2204,6 +2321,7 @@ function App() {
         youtubeUrl={youtubeUrl}
         visitorCount={visitorCount}
         onOpenProducts={openProducts}
+        onOpenDownload={openDownload}
       />}
       {commerceMode && (
         <CommercePage
@@ -2370,6 +2488,7 @@ function Footer({
   youtubeUrl,
   visitorCount,
   onOpenProducts,
+  onOpenDownload,
 }: {
   contactEmail?: string;
   facebookUrl?: string;
@@ -2378,6 +2497,7 @@ function Footer({
   youtubeUrl?: string;
   visitorCount: number | null;
   onOpenProducts: () => void;
+  onOpenDownload: () => void;
 }) {
   const handleContactSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -2409,7 +2529,7 @@ function Footer({
             </div>
           </div>
         </div>
-        <div><h2 className="font-bold">Navigation</h2><div className="mt-3 grid gap-1 text-sm text-blue-100"><a href="#accueil" className="flex min-h-10 items-center hover:text-white">Accueil</a><a href="#produits" onClick={(event) => { event.preventDefault(); onOpenProducts(); }} className="flex min-h-10 items-center hover:text-white">Produits</a><a href="#telechargement" className="flex min-h-10 items-center hover:text-white">Télécharger l’application</a><a href="/terms.html" className="flex min-h-10 items-center hover:text-white">Conditions d’utilisation</a><a href="/privacy-policy.html" className="flex min-h-10 items-center hover:text-white">Politique de confidentialité</a></div></div>
+        <div><h2 className="font-bold">Navigation</h2><div className="mt-3 grid gap-1 text-sm text-blue-100"><a href="#accueil" className="flex min-h-10 items-center hover:text-white">Accueil</a><a href="#produits" onClick={(event) => { event.preventDefault(); onOpenProducts(); }} className="flex min-h-10 items-center hover:text-white">Produits</a><a href="/telechargement" onClick={(event) => { event.preventDefault(); onOpenDownload(); }} className="flex min-h-10 items-center hover:text-white">Télécharger l’application</a><a href="/terms.html" className="flex min-h-10 items-center hover:text-white">Conditions d’utilisation</a><a href="/privacy-policy.html" className="flex min-h-10 items-center hover:text-white">Politique de confidentialité</a></div></div>
         <div><h2 className="font-bold">Nous contacter</h2><form className="mt-3 grid gap-3" onSubmit={handleContactSubmit}><input required name="name" autoComplete="name" placeholder="Votre nom" className="input w-full border-white/20 bg-white/10 text-white placeholder:text-blue-200" /><input required type="email" name="email" autoComplete="email" placeholder="Votre email" className="input w-full border-white/20 bg-white/10 text-white placeholder:text-blue-200" /><textarea required name="message" autoComplete="off" placeholder="Votre message" className="textarea min-h-24 w-full border-white/20 bg-white/10 text-white placeholder:text-blue-200" /><button type="submit" disabled={!contactEmail} className="btn w-full border-0 bg-white text-[#102a68] hover:bg-blue-50 disabled:opacity-50">Envoyer le message</button></form></div>
       </div>
       <div className="flex flex-col items-center justify-center gap-3 border-t border-white/15 px-4 py-5 text-center text-xs text-blue-200 sm:flex-row">
@@ -3276,8 +3396,22 @@ function Modal({ children }: { children: ReactNode }) {
   );
 }
 
-function PriceDisplay({ product, compact = false }: { product: Product; compact?: boolean }) {
+function PriceDisplay({ product, compact = false, dense = false }: { product: Product; compact?: boolean; dense?: boolean }) {
   const hasDiscount = product.originalPrice !== null && product.originalPrice > product.price;
+  if (dense) {
+    return (
+      <div className="mt-1.5 flex min-w-0 items-baseline gap-1.5 overflow-hidden whitespace-nowrap sm:mt-2 sm:gap-2">
+        <span className="shrink-0 text-[12px] font-black leading-5 text-[#143ca8] sm:text-lg">
+          {product.price.toLocaleString("fr-FR")} {product.currency}
+        </span>
+        {hasDiscount && (
+          <span className="min-w-0 truncate text-[10px] font-semibold leading-4 text-slate-400 line-through sm:text-sm">
+            {product.originalPrice!.toLocaleString("fr-FR")} {product.currency}
+          </span>
+        )}
+      </div>
+    );
+  }
   return (
     <div className={`flex flex-wrap items-baseline gap-2 ${compact ? "mt-2" : "mt-4"}`}>
       <span className={`${compact ? "text-lg" : "text-2xl"} font-black text-[#143ca8]`}>

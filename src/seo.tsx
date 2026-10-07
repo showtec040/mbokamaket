@@ -98,6 +98,7 @@ export const pageSeo = (pathname: string): SeoConfig => {
     "/boutiques": { title: "Boutiques et vendeurs en RDC | Mbokamaket", description: "Découvrez les boutiques et vendeurs locaux présents sur la marketplace Mbokamaket en RDC.", path: pathname },
     "/contact": { title: "Contacter Mbokamaket", description: "Une question sur Mbokamaket ? Retrouvez les informations pour contacter notre équipe.", path: pathname },
     "/a-propos": { title: "À propos de Mbokamaket", description: "Mbokamaket facilite l’achat, la vente et la découverte de petites annonces partout en RDC.", path: pathname },
+    "/telechargement": { title: "Télécharger l’application Mbokamaket", description: "Téléchargez Mbokamaket sur votre téléphone et découvrez une marketplace pensée pour acheter et vendre près de chez vous.", path: pathname },
   };
   return pages[pathname] || pages["/"];
 };
