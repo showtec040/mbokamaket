@@ -1,6 +1,6 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ChangeEvent, ComponentType, FormEvent, ReactNode } from "react";
+import type { ChangeEvent, ComponentType, FormEvent } from "react";
 import {
   Bell,
   CarFront,
@@ -3411,14 +3411,6 @@ function ManageProductsPage({
         </div>
       )}
     </section>
-  );
-}
-
-function Modal({ children }: { children: ReactNode }) {
-  return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4">
-      {children}
-    </div>
   );
 }
 
