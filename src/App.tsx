@@ -85,7 +85,7 @@ function PasswordResetPage({ onClose, onLogin }: { onClose: () => void; onLogin:
       <form onSubmit={submit} className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-sm font-semibold text-[#143ca8]">Mbokamaket</p>
+            <p className="text-sm font-semibold text-[#143ca8]">Mbokamarket RDC</p>
             <h1 className="mt-1 font-display text-2xl font-bold text-slate-900">Nouveau mot de passe</h1>
           </div>
           <button type="button" onClick={onClose} className="btn btn-ghost btn-circle" aria-label="Fermer"><X size={18} /></button>
@@ -441,7 +441,7 @@ const mapProduct = (row: Row): Product => ({
     "Autre",
   image: imageFrom(row.images),
   images: imagesFrom(row.images),
-  seller: normalizeDisplayName(row.seller_name) || "Vendeur Mbokamaket",
+  seller: normalizeDisplayName(row.seller_name) || "Vendeur Mbokamarket RDC",
   sellerId: String(row.seller_profile_id || row.seller_id || row.profile_id || row.user_id || ""),
   sellerAvatar: row.seller_avatar_url || "",
   sellerUsername: "",
@@ -1328,8 +1328,8 @@ function App() {
   };
   const seo = selectedProduct
     ? {
-        title: `${selectedProduct.title} à vendre en RDC - Mbokamaket`,
-        description: `${selectedProduct.description || `${selectedProduct.category} disponible à ${selectedProduct.location}`}. Achetez et contactez le vendeur sur Mbokamaket.`.replace(/\s+/g, " ").slice(0, 160),
+        title: `${selectedProduct.title} à vendre en RDC - Mbokamarket RDC`,
+        description: `${selectedProduct.description || `${selectedProduct.category} disponible à ${selectedProduct.location}`}. Achetez et contactez le vendeur sur Mbokamarket RDC.`.replace(/\s+/g, " ").slice(0, 160),
         path: productPath(selectedProduct),
         image: selectedProduct.image,
         type: "product" as const,
@@ -1362,11 +1362,11 @@ function App() {
     <div className="min-h-screen bg-[#f6f8fc] text-slate-900">
       <Seo {...(seo || { ...currentPageSeo, jsonLd: siteStructuredData })} />
       {installOpen && (
-        <aside className="fixed inset-x-3 bottom-3 z-[90] rounded-2xl border border-blue-100 bg-white p-4 shadow-2xl shadow-[#143ca8]/20 sm:inset-x-auto sm:right-6 sm:w-96" aria-label="Installation de Mbokamaket">
+        <aside className="fixed inset-x-3 bottom-3 z-[90] rounded-2xl border border-blue-100 bg-white p-4 shadow-2xl shadow-[#143ca8]/20 sm:inset-x-auto sm:right-6 sm:w-96" aria-label="Installation de Mbokamarket RDC">
           <div className="flex items-start gap-3">
             <img src={appIcon} alt="" className="size-12 rounded-xl object-contain" />
             <div className="min-w-0 flex-1">
-              <h2 className="font-bold text-slate-900">{nativeAppAvailable ? "Ouvrir dans l’application" : nativeAppCheckComplete ? "Télécharger Mbokamaket" : "Mbokamaket sur Android"}</h2>
+              <h2 className="font-bold text-slate-900">{nativeAppAvailable ? "Ouvrir dans l’application" : nativeAppCheckComplete ? "Télécharger Mbokamarket RDC" : "Mbokamarket RDC sur Android"}</h2>
               <p className="mt-1 text-sm text-slate-500">{nativeAppAvailable ? "L’application semble déjà installée sur ce téléphone." : nativeAppOpening ? "Tentative d’ouverture de l’application..." : nativeAppCheckComplete ? "L’application ne s’est pas ouverte. Téléchargez l’APK ; Android vous demandera de confirmer l’installation et, selon vos réglages, d’autoriser cette source." : "Essayez d’ouvrir l’application. Si elle n’est pas installée, son téléchargement vous sera proposé."}</p>
             </div>
             <button type="button" onClick={() => setInstallOpen(false)} className="btn btn-ghost btn-circle btn-sm" aria-label="Fermer">×</button>
@@ -1392,10 +1392,10 @@ function App() {
         </aside>
       )}
       {loading && (
-        <main className="fixed inset-0 z-[100] grid place-items-center bg-[#143ca8] px-6 text-white md:hidden" aria-busy="true" aria-label="Chargement de Mbokamaket">
+        <main className="fixed inset-0 z-[100] grid place-items-center bg-[#143ca8] px-6 text-white md:hidden" aria-busy="true" aria-label="Chargement de Mbokamarket RDC">
           <div className="flex flex-col items-center text-center">
             <LoaderCircle className="size-16 animate-spin text-white" strokeWidth={1.5} aria-hidden="true" />
-            <h1 className="mt-6 font-display text-2xl font-bold">Mbokamaket</h1>
+            <h1 className="mt-6 font-display text-2xl font-bold">Mbokamarket RDC</h1>
             <p className="mt-2 text-sm text-blue-100">Chargement de votre marché...</p>
           </div>
         </main>
@@ -1413,7 +1413,7 @@ function App() {
             <img src={appIcon} alt="" className="size-6 object-contain sm:size-10" />
             <span>
               <strong className="block font-display text-base font-extrabold leading-none text-[#1677ff] sm:text-lg">
-                Mbokamaket
+                Mbokamarket RDC
               </strong>
               <small className="hidden text-[10px] uppercase tracking-widest text-slate-400 sm:block">
                 Le marché près de vous
@@ -2257,7 +2257,7 @@ function App() {
                   <div className="flex items-center gap-3">
                     <img src={appIcon} alt="" className="size-12 rounded-xl shadow-md" />
                     <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#143ca8]">
-                      L’expérience Mbokamaket
+                      L’expérience Mbokamarket RDC
                     </p>
                   </div>
                   <h1 className="mt-4 font-display text-3xl font-bold leading-tight sm:text-4xl">
@@ -2288,7 +2288,7 @@ function App() {
                 Toujours avec vous
               </p>
               <h2 className="mt-1.5 font-display text-xl font-bold sm:mt-2 sm:text-3xl">
-                Téléchargez Mbokamaket
+                Téléchargez Mbokamarket RDC
               </h2>
               <p className="mt-1.5 max-w-xl text-xs leading-5 text-slate-500 sm:mt-3 sm:text-base sm:leading-normal">
                 Retrouvez toutes les fonctionnalités de l’application sur votre
@@ -2524,7 +2524,7 @@ function Footer({
     <footer className="border-t border-[#0b1e55] bg-[#102a68] text-white">
       <div className="mx-auto grid max-w-7xl gap-8 px-4 py-8 sm:px-6 md:grid-cols-[1fr_1.15fr_1fr] md:gap-12 md:py-12">
         <div>
-          <div className="flex items-center gap-3"><img src={appIcon} alt="Logo Mbokamaket" loading="lazy" decoding="async" className="size-11 rounded-xl" /><strong className="font-display text-xl">Mbokamaket</strong></div>
+          <div className="flex items-center gap-3"><img src={appIcon} alt="Logo Mbokamarket RDC" loading="lazy" decoding="async" className="size-11 rounded-xl" /><strong className="font-display text-xl">Mbokamarket RDC</strong></div>
           <p className="mt-4 max-w-xs text-sm leading-6 text-blue-100">Achetez, vendez et découvrez près de chez vous.</p>
           {visitorCount !== null && <p className="mt-3 text-sm text-blue-100"><Eye size={15} className="mr-1 inline-block" />{visitorCount.toLocaleString("fr-FR")} visiteurs</p>}
           <div className="mt-6">
@@ -2541,7 +2541,7 @@ function Footer({
         <div><h2 className="font-bold">Nous contacter</h2><form className="mt-3 grid gap-3" onSubmit={handleContactSubmit}><input required name="name" autoComplete="name" placeholder="Votre nom" className="input w-full border-white/20 bg-white/10 text-white placeholder:text-blue-200" /><input required type="email" name="email" autoComplete="email" placeholder="Votre email" className="input w-full border-white/20 bg-white/10 text-white placeholder:text-blue-200" /><textarea required name="message" autoComplete="off" placeholder="Votre message" className="textarea min-h-24 w-full border-white/20 bg-white/10 text-white placeholder:text-blue-200" /><button type="submit" disabled={!contactEmail} className="btn w-full border-0 bg-white text-[#102a68] hover:bg-blue-50 disabled:opacity-50">Envoyer le message</button></form></div>
       </div>
       <div className="flex flex-col items-center justify-center gap-3 border-t border-white/15 px-4 py-5 text-center text-xs text-blue-200 sm:flex-row">
-        <span>© {new Date().getFullYear()} Mbokamaket. Tous droits réservés.</span>
+        <span>© {new Date().getFullYear()} Mbokamarket RDC. Tous droits réservés.</span>
         <span className="hidden text-blue-300 sm:inline" aria-hidden="true">|</span>
         <span className="inline-flex items-center gap-2">
           Propriété de Kambexa
@@ -2560,12 +2560,12 @@ function LegalPage({ page, onClose }: { page: "conditions" | "confidentialite"; 
         <div className="flex items-center justify-between gap-4">
           <a href="#accueil" onClick={onClose} className="flex items-center gap-2 text-[#143ca8]">
             <span className="grid size-10 place-items-center rounded-xl bg-[#143ca8] text-lg font-black text-white">M</span>
-            <strong className="font-display text-lg">Mbokamaket</strong>
+            <strong className="font-display text-lg">Mbokamarket RDC</strong>
           </a>
           <button type="button" onClick={onClose} className="btn btn-ghost rounded-xl">Retour à l’accueil</button>
         </div>
         <article className="mt-8 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8">
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#143ca8]">Mbokamaket</p>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#143ca8]">Mbokamarket RDC</p>
           <h1 className="mt-2 font-display text-3xl font-bold text-slate-900">{isTerms ? "Conditions d’utilisation" : "Politique de confidentialité"}</h1>
           <p className="mt-2 text-sm text-slate-500">Dernière mise à jour : 6 septembre 2026</p>
           {isTerms ? <TermsContent /> : <PrivacyContent />}
@@ -2578,10 +2578,10 @@ function LegalPage({ page, onClose }: { page: "conditions" | "confidentialite"; 
 function TermsContent() {
   return (
     <div className="mt-8 space-y-6 leading-7 text-slate-600">
-      <section><h2 className="text-xl font-bold text-slate-900">1. Objet du service</h2><p>Mbokamaket est une plateforme qui permet aux utilisateurs de publier, découvrir et contacter des vendeurs pour des produits et services proposés localement.</p></section>
+      <section><h2 className="text-xl font-bold text-slate-900">1. Objet du service</h2><p>Mbokamarket RDC est une plateforme qui permet aux utilisateurs de publier, découvrir et contacter des vendeurs pour des produits et services proposés localement.</p></section>
       <section><h2 className="text-xl font-bold text-slate-900">2. Utilisation de la plateforme</h2><p>L’utilisateur s’engage à fournir des informations exactes, à respecter les lois applicables et à ne pas publier de contenu frauduleux, illégal, trompeur ou portant atteinte aux droits d’autrui.</p></section>
-      <section><h2 className="text-xl font-bold text-slate-900">3. Annonces et transactions</h2><p>Les vendeurs sont responsables de leurs annonces, de leurs produits et de leurs échanges avec les acheteurs. Mbokamaket n’est pas partie aux transactions et recommande de vérifier le produit et le vendeur avant tout paiement.</p></section>
-      <section><h2 className="text-xl font-bold text-slate-900">4. Compte utilisateur</h2><p>L’utilisateur doit protéger ses identifiants et signaler toute utilisation non autorisée de son compte. Mbokamaket peut suspendre une annonce ou un compte en cas de non-respect des présentes conditions.</p></section>
+      <section><h2 className="text-xl font-bold text-slate-900">3. Annonces et transactions</h2><p>Les vendeurs sont responsables de leurs annonces, de leurs produits et de leurs échanges avec les acheteurs. Mbokamarket RDC n’est pas partie aux transactions et recommande de vérifier le produit et le vendeur avant tout paiement.</p></section>
+      <section><h2 className="text-xl font-bold text-slate-900">4. Compte utilisateur</h2><p>L’utilisateur doit protéger ses identifiants et signaler toute utilisation non autorisée de son compte. Mbokamarket RDC peut suspendre une annonce ou un compte en cas de non-respect des présentes conditions.</p></section>
       <section><h2 className="text-xl font-bold text-slate-900">5. Contact</h2><p>Pour toute question, écrivez à <a className="font-semibold text-[#143ca8]" href="mailto:contact@mbokamaket.com">contact@mbokamaket.com</a>.</p></section>
     </div>
   );
@@ -2591,7 +2591,7 @@ function PrivacyContent() {
   return (
     <div className="mt-8 space-y-6 leading-7 text-slate-600">
       <section><h2 className="text-xl font-bold text-slate-900">1. Données collectées</h2><p>Nous pouvons collecter les informations nécessaires à la création du compte, aux annonces, aux favoris, aux notifications et aux échanges avec les utilisateurs.</p></section>
-      <section><h2 className="text-xl font-bold text-slate-900">2. Utilisation des données</h2><p>Ces données servent à fournir les fonctionnalités de Mbokamaket, sécuriser les comptes, afficher les annonces et améliorer le service. Nous ne vendons pas les données personnelles des utilisateurs.</p></section>
+      <section><h2 className="text-xl font-bold text-slate-900">2. Utilisation des données</h2><p>Ces données servent à fournir les fonctionnalités de Mbokamarket RDC, sécuriser les comptes, afficher les annonces et améliorer le service. Nous ne vendons pas les données personnelles des utilisateurs.</p></section>
       <section><h2 className="text-xl font-bold text-slate-900">3. Supabase et stockage</h2><p>Les données applicatives sont hébergées via Supabase. Les utilisateurs doivent éviter de partager des informations sensibles dans une annonce ou un message public.</p></section>
       <section><h2 className="text-xl font-bold text-slate-900">4. Conservation et droits</h2><p>Nous conservons les données pendant la durée nécessaire au fonctionnement du service. Vous pouvez demander l’accès, la correction ou la suppression de vos données en écrivant à notre adresse de contact.</p></section>
       <section><h2 className="text-xl font-bold text-slate-900">5. Contact</h2><p>Pour toute demande concernant vos données personnelles, écrivez à <a className="font-semibold text-[#143ca8]" href="mailto:contact@mbokamaket.com">contact@mbokamaket.com</a>.</p></section>

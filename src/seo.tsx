@@ -5,7 +5,7 @@ type Product = Pick<SeoProduct, "title" | "id">;
 type SeoProduct = { id: string; title: string };
 
 export const SITE_URL = "https://www.mbokamaket.com";
-export const SITE_NAME = "Mbokamaket";
+export const SITE_NAME = "Mbokamarket RDC";
 export const DEFAULT_IMAGE = `${SITE_URL}/favicon.png`;
 
 export const slugify = (value: string) => value
@@ -89,16 +89,16 @@ export const siteStructuredData = [
 
 export const pageSeo = (pathname: string): SeoConfig => {
   const pages: Record<string, SeoConfig> = {
-    "/": { title: "Mbokamaket – Acheter et vendre en RDC", description: "Achetez des produits et trouvez des petites annonces près de chez vous. Mbokamaket met en relation acheteurs et vendeurs partout en République démocratique du Congo.", path: "/" },
-    "/immobilier": { title: "Immobilier à vendre et à louer en RDC | Mbokamaket", description: "Consultez les annonces de maisons, terrains et appartements à vendre ou à louer en République démocratique du Congo.", path: pathname },
-    "/vehicules": { title: "Voitures et véhicules d’occasion en RDC | Mbokamaket", description: "Parcourez les annonces de voitures, motos et autres véhicules d’occasion à vendre en République démocratique du Congo.", path: pathname },
-    "/services": { title: "Services et prestataires en RDC | Mbokamaket", description: "Trouvez des services et prestataires près de chez vous ou publiez votre offre sur Mbokamaket.", path: pathname },
-    "/emploi": { title: "Offres d’emploi en RDC | Mbokamaket", description: "Découvrez des offres d’emploi et des opportunités professionnelles en République démocratique du Congo.", path: pathname },
-    "/annonces": { title: "Petites annonces en RDC | Mbokamaket", description: "Découvrez les petites annonces en République démocratique du Congo et contactez directement les vendeurs.", path: pathname },
-    "/boutiques": { title: "Boutiques et vendeurs en RDC | Mbokamaket", description: "Découvrez les boutiques et vendeurs locaux présents sur la marketplace Mbokamaket en RDC.", path: pathname },
-    "/contact": { title: "Contacter Mbokamaket", description: "Une question sur Mbokamaket ? Retrouvez les informations pour contacter notre équipe.", path: pathname },
-    "/a-propos": { title: "À propos de Mbokamaket", description: "Mbokamaket facilite l’achat, la vente et la découverte de petites annonces partout en RDC.", path: pathname },
-    "/telechargement": { title: "Télécharger l’application Mbokamaket", description: "Téléchargez Mbokamaket sur votre téléphone et découvrez une marketplace pensée pour acheter et vendre près de chez vous.", path: pathname },
+    "/": { title: "Mbokamarket RDC – Acheter et vendre en RDC", description: "Achetez des produits et trouvez des petites annonces près de chez vous. Mbokamarket RDC met en relation acheteurs et vendeurs partout en République démocratique du Congo.", path: "/" },
+    "/immobilier": { title: "Immobilier à vendre et à louer en RDC | Mbokamarket RDC", description: "Consultez les annonces de maisons, terrains et appartements à vendre ou à louer en République démocratique du Congo.", path: pathname },
+    "/vehicules": { title: "Voitures et véhicules d’occasion en RDC | Mbokamarket RDC", description: "Parcourez les annonces de voitures, motos et autres véhicules d’occasion à vendre en République démocratique du Congo.", path: pathname },
+    "/services": { title: "Services et prestataires en RDC | Mbokamarket RDC", description: "Trouvez des services et prestataires près de chez vous ou publiez votre offre sur Mbokamarket RDC.", path: pathname },
+    "/emploi": { title: "Offres d’emploi en RDC | Mbokamarket RDC", description: "Découvrez des offres d’emploi et des opportunités professionnelles en République démocratique du Congo.", path: pathname },
+    "/annonces": { title: "Petites annonces en RDC | Mbokamarket RDC", description: "Découvrez les petites annonces en République démocratique du Congo et contactez directement les vendeurs.", path: pathname },
+    "/boutiques": { title: "Boutiques et vendeurs en RDC | Mbokamarket RDC", description: "Découvrez les boutiques et vendeurs locaux présents sur la marketplace Mbokamarket RDC en RDC.", path: pathname },
+    "/contact": { title: "Contacter Mbokamarket RDC", description: "Une question sur Mbokamarket RDC ? Retrouvez les informations pour contacter notre équipe.", path: pathname },
+    "/a-propos": { title: "À propos de Mbokamarket RDC", description: "Mbokamarket RDC facilite l’achat, la vente et la découverte de petites annonces partout en RDC.", path: pathname },
+    "/telechargement": { title: "Télécharger l’application Mbokamarket RDC", description: "Téléchargez Mbokamarket RDC sur votre téléphone et découvrez une marketplace pensée pour acheter et vendre près de chez vous.", path: pathname },
   };
   return pages[pathname] || pages["/"];
 };
