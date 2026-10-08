@@ -7,6 +7,7 @@ type SeoProduct = { id: string; title: string };
 export const SITE_URL = "https://www.mbokamaket.com";
 export const SITE_NAME = "Mbokamarket RDC";
 export const DEFAULT_IMAGE = `${SITE_URL}/favicon.png`;
+const SITE_DESCRIPTION = "Mbokamarket RDC, marketplace congolaise de Kambexa pour acheter et vendre produits, immobilier, véhicules, services et petites annonces partout en RDC.";
 
 export const slugify = (value: string) => value
   .normalize("NFD")
@@ -39,14 +40,16 @@ export type SeoConfig = {
 export function Seo({ title, description, path = "/", image = DEFAULT_IMAGE, type = "website", jsonLd }: SeoConfig) {
   const url = new URL(path, SITE_URL).toString();
   const imageUrl = absoluteUrl(image);
-  const structuredData = Array.isArray(jsonLd) ? jsonLd : jsonLd ? [jsonLd] : [];
+  const pageStructuredData = Array.isArray(jsonLd) ? jsonLd : jsonLd ? [jsonLd] : [];
+  const structuredData = [...siteStructuredData, ...pageStructuredData];
 
   return (
     <Helmet>
       <html lang="fr" />
       <title>{title}</title>
       <meta name="description" content={description} />
-      <meta name="keywords" content="marketplace RDC, petites annonces RDC, acheter en RDC, vendre en RDC, immobilier RDC, voiture occasion RDC, emploi RDC, services RDC" />
+      <meta name="robots" content="index, follow, max-image-preview:large" />
+      <meta name="googlebot" content="index, follow, max-image-preview:large" />
       <link rel="canonical" href={url} />
       <meta property="og:type" content={type === "product" ? "product" : "website"} />
       <meta property="og:site_name" content={SITE_NAME} />
@@ -69,32 +72,56 @@ export const siteStructuredData = [
   {
     "@context": "https://schema.org",
     "@type": "WebSite",
+    "@id": `${SITE_URL}/#website`,
     name: SITE_NAME,
+    alternateName: ["Mbokamaket.com", "Mbokamarket"],
     url: SITE_URL,
+    description: SITE_DESCRIPTION,
     inLanguage: "fr-CD",
+    publisher: { "@id": `${SITE_URL}/#organization` },
   },
   {
     "@context": "https://schema.org",
     "@type": "Organization",
+    "@id": `${SITE_URL}/#organization`,
     name: SITE_NAME,
+    alternateName: ["Mbokamaket.com", "Mbokamarket"],
     url: SITE_URL,
-    logo: `${SITE_URL}/favicon.png`,
+    description: SITE_DESCRIPTION,
+    logo: {
+      "@type": "ImageObject",
+      url: `${SITE_URL}/favicon.png`,
+    },
+    brand: { "@type": "Brand", name: SITE_NAME },
+    knowsAbout: [
+      "Marketplace en République démocratique du Congo",
+      "Petites annonces en RDC",
+      "Achat et vente de produits",
+      "Boutiques et vendeurs locaux",
+      "Immobilier en RDC",
+      "Véhicules d’occasion en RDC",
+      "Services et emploi en RDC",
+    ],
     areaServed: {
       "@type": "Country",
       name: "République démocratique du Congo",
       alternateName: "RDC",
+    },
+    parentOrganization: {
+      "@type": "Organization",
+      name: "Kambexa",
     },
   },
 ];
 
 export const pageSeo = (pathname: string): SeoConfig => {
   const pages: Record<string, SeoConfig> = {
-    "/": { title: "Mbokamarket RDC – Acheter et vendre en RDC", description: "Achetez des produits et trouvez des petites annonces près de chez vous. Mbokamarket RDC met en relation acheteurs et vendeurs partout en République démocratique du Congo.", path: "/" },
+    "/": { title: "Mbokamarket RDC, marketplace congolaise | Kambexa", description: SITE_DESCRIPTION, path: "/" },
     "/immobilier": { title: "Immobilier à vendre et à louer en RDC | Mbokamarket RDC", description: "Consultez les annonces de maisons, terrains et appartements à vendre ou à louer en République démocratique du Congo.", path: pathname },
     "/vehicules": { title: "Voitures et véhicules d’occasion en RDC | Mbokamarket RDC", description: "Parcourez les annonces de voitures, motos et autres véhicules d’occasion à vendre en République démocratique du Congo.", path: pathname },
     "/services": { title: "Services et prestataires en RDC | Mbokamarket RDC", description: "Trouvez des services et prestataires près de chez vous ou publiez votre offre sur Mbokamarket RDC.", path: pathname },
     "/emploi": { title: "Offres d’emploi en RDC | Mbokamarket RDC", description: "Découvrez des offres d’emploi et des opportunités professionnelles en République démocratique du Congo.", path: pathname },
-    "/annonces": { title: "Petites annonces en RDC | Mbokamarket RDC", description: "Découvrez les petites annonces en République démocratique du Congo et contactez directement les vendeurs.", path: pathname },
+    "/annonces": { title: "Marketplace et petites annonces en RDC | Mbokamarket", description: "Achetez et vendez sur la marketplace Mbokamarket RDC : découvrez des annonces, produits et vendeurs locaux partout en République démocratique du Congo.", path: pathname },
     "/boutiques": { title: "Boutiques et vendeurs en RDC | Mbokamarket RDC", description: "Découvrez les boutiques et vendeurs locaux présents sur la marketplace Mbokamarket RDC en RDC.", path: pathname },
     "/contact": { title: "Contacter Mbokamarket RDC", description: "Une question sur Mbokamarket RDC ? Retrouvez les informations pour contacter notre équipe.", path: pathname },
     "/a-propos": { title: "À propos de Mbokamarket RDC", description: "Mbokamarket RDC facilite l’achat, la vente et la découverte de petites annonces partout en RDC.", path: pathname },

@@ -3,6 +3,8 @@ import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Heart, LoaderCircle, MessageCircle, Star, UserRound } from "lucide-react";
 import { supabase } from "./lib/supabase";
+import NoticeDialog from "./NoticeDialog";
+import type { NoticeDialogVariant } from "./NoticeDialog";
 
 type ProductComment = {
   id: string;
@@ -70,12 +72,14 @@ export default function ProductFeedbackSection({
   sellerName,
   sellerAccountType,
   currentUserId,
+  onLogin,
 }: {
   productId: string;
   sellerId: string;
   sellerName: string;
   sellerAccountType?: string;
   currentUserId: string | null;
+  onLogin: () => void;
 }) {
   const [comments, setComments] = useState<ProductComment[]>([]);
   const [commentsLoading, setCommentsLoading] = useState(true);
@@ -95,6 +99,15 @@ export default function ProductFeedbackSection({
   const [savingReview, setSavingReview] = useState(false);
   const [deletingReview, setDeletingReview] = useState(false);
   const [showAllReviews, setShowAllReviews] = useState(false);
+  const [notice, setNotice] = useState<{
+    title: string;
+    message: string;
+    variant: NoticeDialogVariant;
+    requiresLogin?: boolean;
+    confirmLabel?: string;
+    onConfirm?: () => void;
+    destructive?: boolean;
+  } | null>(null);
   const isBusiness = businessAccountTypes.has((sellerAccountType ?? "").toLowerCase());
   const canReview = Boolean(currentUserId && currentUserId !== sellerId);
 
@@ -215,7 +228,7 @@ export default function ProductFeedbackSection({
     event.preventDefault();
     const content = commentText.trim();
     if (!currentUserId) {
-      window.alert("Connectez-vous pour commenter ce produit.");
+      setNotice({ title: "Connexion requise", message: "Connectez-vous pour commenter ce produit.", variant: "info", requiresLogin: true });
       return;
     }
     if (!supabase || !content || postingComment) return;
@@ -239,7 +252,7 @@ export default function ProductFeedbackSection({
 
   const toggleLike = async (comment: ProductComment) => {
     if (!currentUserId) {
-      window.alert("Connectez-vous pour aimer un commentaire.");
+      setNotice({ title: "Connexion requise", message: "Connectez-vous pour aimer un commentaire.", variant: "info", requiresLogin: true });
       return;
     }
     if (!supabase || likingCommentId) return;
@@ -279,9 +292,8 @@ export default function ProductFeedbackSection({
     await loadReviews();
   };
 
-  const deleteReview = async () => {
+  const confirmDeleteReview = async () => {
     if (!supabase || !myReview || deletingReview) return;
-    if (!window.confirm("Voulez-vous vraiment supprimer votre note et votre commentaire ?")) return;
     setDeletingReview(true);
     setReviewsError("");
     const { error } = await supabase.from("business_reviews").delete().eq("id", myReview.id);
@@ -295,6 +307,21 @@ export default function ProductFeedbackSection({
     await loadReviews();
   };
 
+  const deleteReview = () => {
+    if (!supabase || !myReview || deletingReview) return;
+    setNotice({
+      title: "Supprimer votre avis ?",
+      message: "Votre note et votre commentaire seront supprimés. Cette action est définitive.",
+      variant: "warning",
+      confirmLabel: "Supprimer",
+      destructive: true,
+      onConfirm: () => {
+        setNotice(null);
+        void confirmDeleteReview();
+      },
+    });
+  };
+
   useEffect(() => {
     setSelectedRating(myReview?.rating ?? 0);
     setReviewText(myReview?.comment ?? "");
@@ -302,6 +329,18 @@ export default function ProductFeedbackSection({
 
   return (
     <div className="order-6 space-y-3">
+      {notice && (
+        <NoticeDialog
+          title={notice.title}
+          message={notice.message}
+          variant={notice.variant}
+          onLogin={notice.requiresLogin ? onLogin : undefined}
+          confirmLabel={notice.confirmLabel}
+          destructive={notice.destructive}
+          onClose={() => setNotice(null)}
+          onConfirm={notice.onConfirm}
+        />
+      )}
       {isBusiness && (
         <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
           <h3 className="flex items-center gap-2 font-display text-lg font-bold">

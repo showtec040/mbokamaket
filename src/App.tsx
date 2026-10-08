@@ -42,9 +42,11 @@ import { getCommerceCartItemKey, isCommerceCartItem } from "./commerceCartUtils"
 import SellerOrdersPage from "./SellerOrdersPage";
 import StockManagementPage from "./StockManagementPage";
 import ProductFeedbackSection from "./ProductFeedbackSection";
+import NoticeDialog from "./NoticeDialog";
+import type { NoticeDialogVariant } from "./NoticeDialog";
 import appIcon from "./assets/icon.png";
 import kambexaLogo from "./assets/kambexa.png";
-import { pageSeo, productPath, productSlug, Seo, siteStructuredData } from "./seo";
+import { pageSeo, productPath, productSlug, Seo } from "./seo";
 
 function PasswordResetPage({ onClose, onLogin }: { onClose: () => void; onLogin: () => void }) {
   const [password, setPassword] = useState("");
@@ -489,7 +491,6 @@ function App() {
   const [notices, setNotices] = useState<Notice[]>([]);
   const [noticeOpen, setNoticeOpen] = useState(false);
   const [selectedNotice, setSelectedNotice] = useState<Notice | null>(null);
-  const [authOpen, setAuthOpen] = useState(false);
   const [authSuccessMessage, setAuthSuccessMessage] = useState("");
   const [publishOpen, setPublishOpen] = useState(false);
   const [manageProductsOpen, setManageProductsOpen] = useState(false);
@@ -786,7 +787,6 @@ function App() {
         address: profile?.address || "",
       };
       setUser(current);
-      setAuthOpen(false);
       if (window.location.hash === "#connexion" || window.location.hash === "#inscription") window.location.hash = "accueil";
       void loadNotices(current);
     };
@@ -805,7 +805,6 @@ function App() {
       if (callbackError) {
         console.error("[OAuth] Echec du fournisseur", callbackError);
         setError(callbackError);
-        setAuthOpen(false);
         return;
       }
       if (code) {
@@ -1196,7 +1195,6 @@ function App() {
   }, [noticeOpen, selectedNotice, visibleNotices]);
   const openAuth = (authMode: "login" | "signup" = "login") => {
     setProfileOpen(false);
-    setAuthOpen(true);
     window.location.hash = authMode === "login" ? "connexion" : "inscription";
   };
   useEffect(() => {
@@ -1208,7 +1206,6 @@ function App() {
       setManageProductsOpen(hash === "#mes-produits");
       setStockManagementOpen(hash === "#gestion-stock");
       setProfileManagementOpen(hash === "#mon-profil");
-      setAuthOpen(hash === "#connexion" || hash === "#inscription");
       setLegalPage(hash === "#conditions" ? "conditions" : hash === "#confidentialite" ? "confidentialite" : null);
       if (hash === "#telechargement" && location.pathname !== "/telechargement") {
         navigate("/telechargement");
@@ -1345,6 +1342,23 @@ function App() {
         },
       }
     : null;
+  if (authRoute) {
+    const authMode = window.location.hash === "#inscription" ? "signup" : "login";
+    return (
+      <div className="min-h-screen bg-[#f6f8fc] text-slate-900">
+        <Seo
+          title={authMode === "signup" ? "Créer un compte - Mbokamarket RDC" : "Connexion - Mbokamarket RDC"}
+          description={authMode === "signup" ? "Créez votre compte Mbokamarket RDC." : "Connectez-vous à votre compte Mbokamarket RDC."}
+          path={authMode === "signup" ? "/#inscription" : "/#connexion"}
+        />
+        <AuthPage
+          key={window.location.hash}
+          initialMode={authMode}
+          onClose={() => { window.location.hash = "accueil"; }}
+        />
+      </div>
+    );
+  }
   if (profileManagementOpen && user) {
     return (
       <div className="min-h-screen bg-[#f6f8fc] text-slate-900">
@@ -1360,7 +1374,7 @@ function App() {
   }
   return (
     <div className="min-h-screen bg-[#f6f8fc] text-slate-900">
-      <Seo {...(seo || { ...currentPageSeo, jsonLd: siteStructuredData })} />
+      <Seo {...(seo || currentPageSeo)} />
       {installOpen && (
         <aside className="fixed inset-x-3 bottom-3 z-[90] rounded-2xl border border-blue-100 bg-white p-4 shadow-2xl shadow-[#143ca8]/20 sm:inset-x-auto sm:right-6 sm:w-96" aria-label="Installation de Mbokamarket RDC">
           <div className="flex items-start gap-3">
@@ -1727,6 +1741,7 @@ function App() {
                 : item.category === selectedProduct.category)
             )}
             onSelectSellerProduct={openProduct}
+            onLogin={() => openAuth()}
             onDownload={() => {
               openDownload();
             }}
@@ -2328,7 +2343,6 @@ function App() {
         instagramUrl={instagramUrl}
         youtubeUrl={youtubeUrl}
         visitorCount={visitorCount}
-        onOpenProducts={openProducts}
         onOpenDownload={openDownload}
       />}
       {commerceMode && (
@@ -2382,7 +2396,6 @@ function App() {
           onClose={() => setSellerOrdersOpen(false)}
         />
       )}
-      {(authOpen || authRoute) && <AuthModal key={window.location.hash} initialMode={window.location.hash === "#inscription" ? "signup" : "login"} onClose={() => { setAuthOpen(false); window.location.hash = "accueil"; }} />}
       {authSuccessMessage && <div className="fixed right-4 top-4 z-[120] max-w-sm rounded-2xl bg-emerald-600 px-5 py-4 text-sm font-semibold text-white shadow-2xl" role="status">{authSuccessMessage}</div>}
       {passwordResetRoute && <PasswordResetPage onClose={() => { window.history.replaceState(null, "", window.location.pathname); window.location.hash = "accueil"; }} onLogin={() => { window.history.replaceState(null, "", window.location.pathname); window.location.hash = "connexion"; }} />}
     </div>
@@ -2495,7 +2508,6 @@ function Footer({
   instagramUrl,
   youtubeUrl,
   visitorCount,
-  onOpenProducts,
   onOpenDownload,
 }: {
   contactEmail?: string;
@@ -2504,7 +2516,6 @@ function Footer({
   instagramUrl?: string;
   youtubeUrl?: string;
   visitorCount: number | null;
-  onOpenProducts: () => void;
   onOpenDownload: () => void;
 }) {
   const handleContactSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -2537,7 +2548,7 @@ function Footer({
             </div>
           </div>
         </div>
-        <div><h2 className="font-bold">Navigation</h2><div className="mt-3 grid gap-1 text-sm text-blue-100"><a href="#accueil" className="flex min-h-10 items-center hover:text-white">Accueil</a><a href="#produits" onClick={(event) => { event.preventDefault(); onOpenProducts(); }} className="flex min-h-10 items-center hover:text-white">Produits</a><a href="/telechargement" onClick={(event) => { event.preventDefault(); onOpenDownload(); }} className="flex min-h-10 items-center hover:text-white">Télécharger l’application</a><a href="/terms.html" className="flex min-h-10 items-center hover:text-white">Conditions d’utilisation</a><a href="/privacy-policy.html" className="flex min-h-10 items-center hover:text-white">Politique de confidentialité</a></div></div>
+        <div><h2 className="font-bold">Navigation</h2><div className="mt-3 grid gap-1 text-sm text-blue-100"><a href="#accueil" className="flex min-h-10 items-center hover:text-white">Accueil</a><a href="/annonces#produits" onClick={(event) => { event.preventDefault(); window.location.assign("/annonces#produits"); }} className="flex min-h-10 items-center hover:text-white">Produits</a><a href="/telechargement" onClick={(event) => { event.preventDefault(); onOpenDownload(); }} className="flex min-h-10 items-center hover:text-white">Télécharger l’application</a><a href="/terms.html" className="flex min-h-10 items-center hover:text-white">Conditions d’utilisation</a><a href="/privacy-policy.html" className="flex min-h-10 items-center hover:text-white">Politique de confidentialité</a></div></div>
         <div><h2 className="font-bold">Nous contacter</h2><form className="mt-3 grid gap-3" onSubmit={handleContactSubmit}><input required name="name" autoComplete="name" placeholder="Votre nom" className="input w-full border-white/20 bg-white/10 text-white placeholder:text-blue-200" /><input required type="email" name="email" autoComplete="email" placeholder="Votre email" className="input w-full border-white/20 bg-white/10 text-white placeholder:text-blue-200" /><textarea required name="message" autoComplete="off" placeholder="Votre message" className="textarea min-h-24 w-full border-white/20 bg-white/10 text-white placeholder:text-blue-200" /><button type="submit" disabled={!contactEmail} className="btn w-full border-0 bg-white text-[#102a68] hover:bg-blue-50 disabled:opacity-50">Envoyer le message</button></form></div>
       </div>
       <div className="flex flex-col items-center justify-center gap-3 border-t border-white/15 px-4 py-5 text-center text-xs text-blue-200 sm:flex-row">
@@ -2599,7 +2610,7 @@ function PrivacyContent() {
   );
 }
 
-function AuthModal({ initialMode, onClose }: { initialMode: "login" | "signup"; onClose: () => void }) {
+function AuthPage({ initialMode, onClose }: { initialMode: "login" | "signup"; onClose: () => void }) {
   const [mode, setMode] = useState<"login" | "signup" | "reset">(initialMode);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -2678,21 +2689,27 @@ function AuthModal({ initialMode, onClose }: { initialMode: "login" | "signup"; 
     }
   };
   return (
-    <Modal>
+    <main className="flex min-h-screen flex-col bg-[radial-gradient(ellipse_at_top_left,_var(--tw-gradient-stops))] from-blue-100 via-[#f6f8fc] to-white">
+      <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-4 sm:px-6 sm:py-6">
+        <a href="/" onClick={(event) => { event.preventDefault(); onClose(); }} className="flex items-center gap-2">
+          <img src={appIcon} alt="" className="size-9 object-contain sm:size-11" />
+          <span>
+            <strong className="block font-display text-base font-extrabold leading-none text-[#1677ff] sm:text-lg">Mbokamarket RDC</strong>
+            <small className="hidden text-[10px] uppercase tracking-widest text-slate-400 sm:block">Le marché près de vous</small>
+          </span>
+        </a>
+        <button type="button" onClick={onClose} className="btn btn-ghost btn-sm text-slate-600">
+          <ChevronLeft size={17} /> Retour à l’accueil
+        </button>
+      </header>
+      <div className="flex flex-1 items-start justify-center px-4 pb-8 pt-3 sm:px-6 sm:py-8">
       <form
         onSubmit={submit}
-        className="w-full max-w-md rounded-3xl bg-white p-6"
+        className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-5 shadow-xl shadow-blue-950/5 sm:p-8"
       >
-        <div className="flex items-center justify-between">
-          <h2 className="font-display text-2xl font-bold">{mode === "login" ? "Se connecter" : mode === "reset" ? "Réinitialiser le mot de passe" : "Créer un compte"}</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="btn btn-ghost btn-circle"
-          >
-            <X size={18} />
-          </button>
-        </div>
+        <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#143ca8]">Mbokamarket RDC</p>
+        <h1 className="mt-1 font-display text-2xl font-bold sm:text-3xl">{mode === "login" ? "Se connecter" : mode === "reset" ? "Réinitialiser le mot de passe" : "Créer un compte"}</h1>
+        <p className="mt-2 text-sm leading-6 text-slate-500">{mode === "signup" ? "Rejoignez Mbokamarket pour acheter et vendre près de chez vous." : mode === "reset" ? "Récupérez l’accès à votre compte en quelques étapes." : "Retrouvez vos annonces, vos commandes et vos vendeurs favoris."}</p>
         {mode === "login" && <div className="mt-5 grid gap-2 sm:grid-cols-2">
           <button type="button" disabled={busy} onClick={() => void signInWithProvider("google")} className="btn btn-outline w-full gap-2">
             <FaGoogle size={16} className="text-red-500" /> Google
@@ -2766,7 +2783,8 @@ function AuthModal({ initialMode, onClose }: { initialMode: "login" | "signup"; 
         {mode === "reset" && <button type="button" onClick={() => { setMode("login"); setError(""); setSuccess(""); }} className="mt-4 w-full text-sm font-semibold text-[#143ca8]">Retour à la connexion</button>}
         {mode === "signup" && <button type="button" onClick={() => { setMode("login"); setError(""); setSuccess(""); window.location.hash = "connexion"; }} className="mt-4 w-full text-sm font-semibold text-[#143ca8]">J’ai déjà un compte</button>}
       </form>
-    </Modal>
+      </div>
+    </main>
   );
 }
 function PublishModal({ user, onClose, onCreated }: { user: User; onClose: () => void; onCreated: () => void }) {
@@ -3435,10 +3453,12 @@ function PriceDisplay({ product, compact = false, dense = false }: { product: Pr
   );
 }
 
-function ProductDetails({ product, isFavorite, onToggleFavorite, onAddToCart, onClose, sellerProducts, similarProducts, onSelectSellerProduct, onDownload }: { product: Product; isFavorite: boolean; onToggleFavorite: () => void; onAddToCart: (variants: ProductVariant[]) => void; onClose: () => void; sellerProducts: Product[]; similarProducts: Product[]; onSelectSellerProduct: (product: Product) => void; onDownload: () => void }) {
+function ProductDetails({ product, isFavorite, onToggleFavorite, onAddToCart, onClose, sellerProducts, similarProducts, onSelectSellerProduct, onDownload, onLogin }: { product: Product; isFavorite: boolean; onToggleFavorite: () => void; onAddToCart: (variants: ProductVariant[]) => void; onClose: () => void; sellerProducts: Product[]; similarProducts: Product[]; onSelectSellerProduct: (product: Product) => void; onDownload: () => void; onLogin: () => void }) {
   const [isFollowing, setIsFollowing] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [followBusy, setFollowBusy] = useState(false);
+  const [notice, setNotice] = useState<{ title: string; message: string; variant: NoticeDialogVariant; requiresLogin?: boolean } | null>(null);
+  const [appDownloadPromptOpen, setAppDownloadPromptOpen] = useState(false);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [selectedSpecifications, setSelectedSpecifications] = useState<Record<string, string>>({});
   const [configurationQuantities, setConfigurationQuantities] = useState<Record<string, number>>({});
@@ -3497,7 +3517,16 @@ function ProductDetails({ product, isFavorite, onToggleFavorite, onAddToCart, on
     const { data: authData } = await supabase.auth.getUser();
     const currentUserId = authData.user?.id;
     if (!currentUserId) {
-      window.alert("Connectez-vous pour suivre ce compte.");
+      setNotice({ title: "Connexion requise", message: "Connectez-vous pour suivre ce compte.", variant: "info", requiresLogin: true });
+      return;
+    }
+    if (authData.user?.is_anonymous && !isFollowing) {
+      setNotice({
+        title: "Créez un compte pour suivre ce vendeur",
+        message: "Les comptes invités ne peuvent pas suivre un compte. Créez un compte ou connectez-vous pour suivre ce vendeur.",
+        variant: "info",
+        requiresLogin: true,
+      });
       return;
     }
     if (currentUserId === product.sellerId) return;
@@ -3507,7 +3536,7 @@ function ProductDetails({ product, isFavorite, onToggleFavorite, onAddToCart, on
       : await supabase.from("follows").insert({ follower_id: currentUserId, following_id: product.sellerId });
     setFollowBusy(false);
     if (result.error) {
-      window.alert(result.error.message || "Impossible de modifier le suivi.");
+      setNotice({ title: "Suivi impossible", message: result.error.message || "Impossible de modifier le suivi.", variant: "error" });
       return;
     }
     setIsFollowing(!isFollowing);
@@ -3530,9 +3559,13 @@ function ProductDetails({ product, isFavorite, onToggleFavorite, onAddToCart, on
             if (navigator.share) void navigator.share({ title: product.title, text: product.description, url: productUrl }).catch((shareError) => {
               console.warn("[product] partage annulé ou indisponible", shareError);
             });
-            else void navigator.clipboard.writeText(productUrl).then(() => window.alert("Lien du produit copié.")).catch((shareError) => {
+            else void navigator.clipboard.writeText(productUrl).then(() => setNotice({
+              title: "Lien copié",
+              message: "Le lien du produit a été copié dans le presse-papiers.",
+              variant: "success",
+            })).catch((shareError) => {
               console.error("[product] impossible de copier le lien", shareError);
-              window.alert("Impossible de partager ce produit.");
+              setNotice({ title: "Partage impossible", message: "Impossible de partager ce produit.", variant: "error" });
             });
           }}
           className="btn btn-ghost btn-circle btn-sm"
@@ -3845,10 +3878,34 @@ function ProductDetails({ product, isFavorite, onToggleFavorite, onAddToCart, on
             sellerName={product.seller}
             sellerAccountType={product.sellerAccountType}
             currentUserId={currentUserId}
+            onLogin={onLogin}
           />
-          <button type="button" onClick={onDownload} className="order-7 btn btn-ghost w-full text-[#143ca8]">Plus de fonctionnalités dans l’application</button>
+          <button type="button" onClick={() => setAppDownloadPromptOpen(true)} className="order-7 btn btn-ghost w-full text-[#143ca8]">Plus de fonctionnalités dans l’application</button>
         </div>
       </div>
+      {notice && (
+        <NoticeDialog
+          title={notice.title}
+          message={notice.message}
+          variant={notice.variant}
+          onLogin={notice.requiresLogin ? onLogin : undefined}
+          onClose={() => setNotice(null)}
+        />
+      )}
+      {appDownloadPromptOpen && (
+        <NoticeDialog
+          title="Découvrez l’application Mbokamaket"
+          message="Certaines fonctionnalités sont disponibles dans l’application. Téléchargez-la pour profiter de l’expérience complète."
+          variant="info"
+          confirmLabel="Voir les téléchargements"
+          cancelLabel="Continuer sur le site"
+          onClose={() => setAppDownloadPromptOpen(false)}
+          onConfirm={() => {
+            setAppDownloadPromptOpen(false);
+            onDownload();
+          }}
+        />
+      )}
     </section>
   );
 }

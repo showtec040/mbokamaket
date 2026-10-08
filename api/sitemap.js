@@ -9,7 +9,7 @@ const productPath = (product) => `/produit/${slugify(product.title) || 'annonce'
 const escapeXml = (value) => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&apos;');
 
 export default async function handler(_request, response) {
-  const pages = ['/', '/immobilier', '/vehicules', '/services', '/emploi', '/contact', '/a-propos', '/annonces', '/boutiques'];
+  const pages = ['/', '/immobilier', '/vehicules', '/services', '/emploi', '/contact', '/a-propos', '/annonces', '/boutiques', '/telechargement'];
   let products = [];
   if (SUPABASE_URL && SUPABASE_KEY) {
     try {
