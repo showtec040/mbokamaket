@@ -1,6 +1,8 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, ComponentType, FormEvent } from "react";
+import { Turnstile } from "@marsidev/react-turnstile";
+import type { TurnstileInstance } from "@marsidev/react-turnstile";
 import {
   Bell,
   CarFront,
@@ -2627,8 +2629,21 @@ function AuthPage({ initialMode, onClose }: { initialMode: "login" | "signup"; o
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [busy, setBusy] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState("");
+  const [captchaError, setCaptchaError] = useState("");
+  const captchaRef = useRef<TurnstileInstance | null>(null);
+  const captchaSiteKey = (import.meta.env.VITE_TURNSTILE_SITE_KEY as string | undefined)?.trim() ?? "";
+  const resetCaptcha = () => {
+    setCaptchaToken("");
+    setCaptchaError("");
+    captchaRef.current?.reset();
+  };
+  const invalidateCaptchaForFormChange = () => {
+    if (captchaToken) resetCaptcha();
+  };
   useEffect(() => {
     const syncMode = () => {
+      resetCaptcha();
       setMode(window.location.hash === "#inscription" ? "signup" : "login");
       setError("");
       setSuccess("");
@@ -2638,12 +2653,14 @@ function AuthPage({ initialMode, onClose }: { initialMode: "login" | "signup"; o
   }, []);
   const submit = async (event: FormEvent) => {
     event.preventDefault();
+    setError("");
+    setSuccess("");
     if (!supabase) {
       setError("La configuration Supabase est absente.");
       return;
     }
-    setBusy(true);
     if (mode === "reset") {
+      setBusy(true);
       const redirectTo = getPasswordResetRedirectUrl();
       const { error: authError } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo,
@@ -2653,20 +2670,34 @@ function AuthPage({ initialMode, onClose }: { initialMode: "login" | "signup"; o
       else setSuccess("Si cette adresse correspond à un compte, vous recevrez un e-mail pour réinitialiser votre mot de passe.");
       return;
     }
-    if (mode === "signup" && !/^\d{8,15}$/.test(phone.replace(/\D/g, ""))) { setError("Le numéro de téléphone n’est pas valide."); setBusy(false); return; }
-    if (mode === "signup" && password.length < 8) { setError("Le mot de passe doit contenir au moins 8 caractères."); setBusy(false); return; }
-    if (mode === "signup" && role === "seller" && (accountType === "boutique" || accountType === "magasin") && !businessName.trim()) { setError("Veuillez renseigner le nom de votre boutique ou magasin."); setBusy(false); return; }
-    if (mode === "signup" && password !== confirmPassword) { setError("Les mots de passe ne correspondent pas."); setBusy(false); return; }
-    if (mode === "signup" && !acceptedPrivacy) { setError("Vous devez accepter la Politique de confidentialité."); setBusy(false); return; }
-    const result = mode === "login"
-      ? await supabase!.auth.signInWithPassword({ email, password })
-      : await supabase!.auth.signUp({ email, password, options: { data: { name, phone, role, account_type: role === "buyer" ? "personal" : accountType, business_name: businessName || null, referral_code: referralCode || null, accepted_privacy: acceptedPrivacy, privacy_accepted: acceptedPrivacy } } });
-    const authError = result.error;
-    setBusy(false);
-    if (authError) setError(authError.message);
-    else setSuccess(mode === "signup"
-      ? "Votre compte a été créé avec succès. Vérifiez votre email pour activer le compte."
-      : "Connexion réussie.");
+    if (mode === "signup" && !/^\d{8,15}$/.test(phone.replace(/\D/g, ""))) { setError("Le numéro de téléphone n’est pas valide."); return; }
+    if (mode === "signup" && password.length < 8) { setError("Le mot de passe doit contenir au moins 8 caractères."); return; }
+    if (mode === "signup" && role === "seller" && (accountType === "boutique" || accountType === "magasin") && !businessName.trim()) { setError("Veuillez renseigner le nom de votre boutique ou magasin."); return; }
+    if (mode === "signup" && password !== confirmPassword) { setError("Les mots de passe ne correspondent pas."); return; }
+    if (mode === "signup" && !acceptedPrivacy) { setError("Vous devez accepter la Politique de confidentialité."); return; }
+    if (!captchaSiteKey) {
+      setError("La vérification de sécurité n’est pas disponible. Réessayez plus tard.");
+      return;
+    }
+    if (!captchaToken) {
+      setError("Veuillez effectuer la vérification de sécurité.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const result = mode === "login"
+        ? await supabase.auth.signInWithPassword({ email, password, options: { captchaToken } })
+        : await supabase.auth.signUp({ email, password, options: { captchaToken, data: { name, phone, role, account_type: role === "buyer" ? "personal" : accountType, business_name: businessName || null, referral_code: referralCode || null, accepted_privacy: acceptedPrivacy, privacy_accepted: acceptedPrivacy } } });
+      if (result.error) setError(result.error.message);
+      else setSuccess(mode === "signup"
+        ? "Votre compte a été créé avec succès. Vérifiez votre email pour activer le compte."
+        : "Connexion réussie.");
+    } catch (authError) {
+      setError(authError instanceof Error ? authError.message : "La demande d’authentification a échoué.");
+    } finally {
+      setBusy(false);
+      resetCaptcha();
+    }
   };
   const signInWithProvider = async (provider: "google" | "facebook") => {
     if (!supabase) {
@@ -2721,17 +2752,17 @@ function AuthPage({ initialMode, onClose }: { initialMode: "login" | "signup"; o
         {mode === "login" && <div className="divider my-3 text-xs text-slate-400">ou avec votre e-mail</div>}
         {mode === "reset" && <p className="mt-4 text-sm leading-6 text-slate-500">Saisissez votre adresse e-mail et nous vous enverrons un lien sécurisé.</p>}
         {mode === "signup" && <>
-          <input required value={name} onChange={(event) => setName(event.target.value)} placeholder="Nom complet" className="input input-bordered mt-2 w-full" />
-          <input required value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="Numéro de téléphone" className="input input-bordered mt-3 w-full" />
-          <div className="mt-3 grid grid-cols-2 gap-3"><select value={role} onChange={(event) => setRole(event.target.value as "buyer" | "seller")} className="select select-bordered w-full"><option value="buyer">Acheteur</option><option value="seller">Vendeur</option></select><select value={accountType} onChange={(event) => setAccountType(event.target.value)} className="select select-bordered w-full"><option value="personal">Personnel</option><option value="boutique">Boutique</option><option value="magasin">Magasin</option><option value="agence_immo">Agence immobilière</option></select></div>
-          {role === "seller" && (accountType === "boutique" || accountType === "magasin") && <input required value={businessName} onChange={(event) => setBusinessName(event.target.value)} placeholder={accountType === "boutique" ? "Nom de la boutique" : "Nom du magasin"} className="input input-bordered mt-3 w-full" />}
-          <input value={referralCode} onChange={(event) => setReferralCode(event.target.value)} placeholder="Code du parrain (optionnel)" className="input input-bordered mt-3 w-full" />
+          <input required value={name} onChange={(event) => { setName(event.target.value); invalidateCaptchaForFormChange(); }} placeholder="Nom complet" className="input input-bordered mt-2 w-full" />
+          <input required value={phone} onChange={(event) => { setPhone(event.target.value); invalidateCaptchaForFormChange(); }} placeholder="Numéro de téléphone" className="input input-bordered mt-3 w-full" />
+          <div className="mt-3 grid grid-cols-2 gap-3"><select value={role} onChange={(event) => { setRole(event.target.value as "buyer" | "seller"); invalidateCaptchaForFormChange(); }} className="select select-bordered w-full"><option value="buyer">Acheteur</option><option value="seller">Vendeur</option></select><select value={accountType} onChange={(event) => { setAccountType(event.target.value); invalidateCaptchaForFormChange(); }} className="select select-bordered w-full"><option value="personal">Personnel</option><option value="boutique">Boutique</option><option value="magasin">Magasin</option><option value="agence_immo">Agence immobilière</option></select></div>
+          {role === "seller" && (accountType === "boutique" || accountType === "magasin") && <input required value={businessName} onChange={(event) => { setBusinessName(event.target.value); invalidateCaptchaForFormChange(); }} placeholder={accountType === "boutique" ? "Nom de la boutique" : "Nom du magasin"} className="input input-bordered mt-3 w-full" />}
+          <input value={referralCode} onChange={(event) => { setReferralCode(event.target.value); invalidateCaptchaForFormChange(); }} placeholder="Code du parrain (optionnel)" className="input input-bordered mt-3 w-full" />
         </>}
         <input
           required
           type="email"
           value={email}
-          onChange={(event) => setEmail(event.target.value)}
+          onChange={(event) => { setEmail(event.target.value); invalidateCaptchaForFormChange(); }}
           placeholder="Email"
           className="input input-bordered mt-2 w-full"
         />
@@ -2740,7 +2771,7 @@ function AuthPage({ initialMode, onClose }: { initialMode: "login" | "signup"; o
             required
             type={showPassword ? "text" : "password"}
             value={password}
-            onChange={(event) => setPassword(event.target.value)}
+            onChange={(event) => { setPassword(event.target.value); invalidateCaptchaForFormChange(); }}
             placeholder="Mot de passe"
             className="input input-bordered w-full pr-12"
           />
@@ -2755,7 +2786,7 @@ function AuthPage({ initialMode, onClose }: { initialMode: "login" | "signup"; o
         </div>}
         {mode === "signup" && <>
           <div className="relative mt-3">
-            <input required minLength={8} type={showConfirmPassword ? "text" : "password"} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Confirmer le mot de passe" className="input input-bordered w-full pr-12" />
+            <input required minLength={8} type={showConfirmPassword ? "text" : "password"} value={confirmPassword} onChange={(event) => { setConfirmPassword(event.target.value); invalidateCaptchaForFormChange(); }} placeholder="Confirmer le mot de passe" className="input input-bordered w-full pr-12" />
             <button
               type="button"
               onClick={() => setShowConfirmPassword(!showConfirmPassword)}
@@ -2765,11 +2796,43 @@ function AuthPage({ initialMode, onClose }: { initialMode: "login" | "signup"; o
               {showConfirmPassword ? <EyeOff size={17} /> : <Eye size={17} />}
             </button>
           </div>
-          <label className="mt-4 flex items-start gap-2 text-xs text-slate-600"><input required type="checkbox" checked={acceptedPrivacy} onChange={(event) => setAcceptedPrivacy(event.target.checked)} className="checkbox checkbox-sm" /> J’accepte la Politique de confidentialité.</label>
+          <label className="mt-4 flex items-start gap-2 text-xs text-slate-600"><input required type="checkbox" checked={acceptedPrivacy} onChange={(event) => { setAcceptedPrivacy(event.target.checked); invalidateCaptchaForFormChange(); }} className="checkbox checkbox-sm" /> J’accepte la Politique de confidentialité.</label>
         </>}
+        {mode !== "reset" && (
+          <div className="mt-4">
+            {captchaSiteKey ? (
+              <>
+                <p className="mb-2 text-sm font-medium text-slate-700">Vérification de sécurité</p>
+                <Turnstile
+                  key={mode}
+                  ref={captchaRef}
+                  siteKey={captchaSiteKey}
+                  onSuccess={(token) => { setCaptchaToken(token); setCaptchaError(""); setError(""); }}
+                  onExpire={() => { setCaptchaToken(""); setCaptchaError("La vérification a expiré. Recommencez."); }}
+                  onError={(errorCode) => {
+                    setCaptchaToken("");
+                    const detail = errorCode === "110200"
+                      ? "Ce domaine n’est pas autorisé dans Hostname Management du widget Cloudflare."
+                      : errorCode === "110100" || errorCode === "110110" || errorCode === "400020" || errorCode === "400070"
+                        ? "Vérifiez la Sitekey et l’état du widget dans Cloudflare."
+                        : errorCode === "200500"
+                          ? "Le défi Cloudflare ne se charge pas. Autorisez challenges.cloudflare.com et désactivez temporairement VPN ou bloqueur de publicités."
+                          : "Vérifiez le domaine autorisé, la connexion réseau et les extensions du navigateur.";
+                    setCaptchaError(`Erreur Turnstile ${errorCode} : ${detail}`);
+                  }}
+                  onUnsupported={() => { setCaptchaToken(""); setCaptchaError("Ce navigateur ne prend pas en charge la vérification de sécurité."); }}
+                  options={{ action: mode === "signup" ? "signup" : "login", theme: "light" }}
+                />
+                {captchaError && <p role="alert" className="mt-2 text-xs text-red-600">{captchaError}</p>}
+              </>
+            ) : (
+              <p role="alert" className="text-sm text-amber-700">La vérification de sécurité est indisponible. Réessayez plus tard.</p>
+            )}
+          </div>
+        )}
         {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
         {success && <p className="mt-3 text-sm text-green-700">{success}</p>}
-        <button disabled={busy} className="btn btn-primary mt-5 w-full">
+        <button disabled={busy || (mode !== "reset" && (!captchaSiteKey || !captchaToken))} className="btn btn-primary mt-5 w-full">
           {busy ? (
             <LoaderCircle className="animate-spin" size={17} />
           ) : (
@@ -2777,11 +2840,11 @@ function AuthPage({ initialMode, onClose }: { initialMode: "login" | "signup"; o
           )}
         </button>
         {mode === "login" && <>
-          <button type="button" onClick={() => { setMode("reset"); setError(""); setSuccess(""); }} className="mt-4 w-full text-sm font-semibold text-[#143ca8]">Mot de passe oublié ?</button>
-          <button type="button" onClick={() => { setMode("signup"); setError(""); setSuccess(""); window.location.hash = "inscription"; }} className="mt-3 w-full text-sm font-semibold text-[#143ca8]">Créer un compte</button>
+          <button type="button" onClick={() => { resetCaptcha(); setMode("reset"); setError(""); setSuccess(""); }} className="mt-4 w-full text-sm font-semibold text-[#143ca8]">Mot de passe oublié ?</button>
+          <button type="button" onClick={() => { resetCaptcha(); setMode("signup"); setError(""); setSuccess(""); window.location.hash = "inscription"; }} className="mt-3 w-full text-sm font-semibold text-[#143ca8]">Créer un compte</button>
         </>}
-        {mode === "reset" && <button type="button" onClick={() => { setMode("login"); setError(""); setSuccess(""); }} className="mt-4 w-full text-sm font-semibold text-[#143ca8]">Retour à la connexion</button>}
-        {mode === "signup" && <button type="button" onClick={() => { setMode("login"); setError(""); setSuccess(""); window.location.hash = "connexion"; }} className="mt-4 w-full text-sm font-semibold text-[#143ca8]">J’ai déjà un compte</button>}
+        {mode === "reset" && <button type="button" onClick={() => { resetCaptcha(); setMode("login"); setError(""); setSuccess(""); }} className="mt-4 w-full text-sm font-semibold text-[#143ca8]">Retour à la connexion</button>}
+        {mode === "signup" && <button type="button" onClick={() => { resetCaptcha(); setMode("login"); setError(""); setSuccess(""); window.location.hash = "connexion"; }} className="mt-4 w-full text-sm font-semibold text-[#143ca8]">J’ai déjà un compte</button>}
       </form>
       </div>
     </main>
