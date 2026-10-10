@@ -22,6 +22,16 @@ const slugify = (value) => String(value || '')
   .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 70);
 const productSlug = (product) => `${slugify(product.title) || 'annonce'}-${product.id}`;
+const productIdFromSlug = (value) => {
+  let decodedValue = value;
+  try {
+    decodedValue = decodeURIComponent(value);
+  } catch {
+    // Keep the original route value when it contains invalid percent encoding.
+  }
+  const uuidMatch = decodedValue.match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i);
+  return uuidMatch?.[1] || '';
+};
 const shareActions = (appUrl, siteUrl) => `<div class="actions"><a class="button app-open" href="${escapeHtml(appUrl)}">Ouvrir dans l’application</a><a class="button secondary" href="${escapeHtml(siteUrl)}">Voir sur le site</a><div class="app-fallback" hidden aria-live="polite"><p class="warning">L’application ne s’est pas ouverte. Téléchargez l’APK ; Android vous demandera de confirmer l’installation et, selon vos réglages, d’autoriser cette source.</p><a class="button" href="${escapeHtml(APK_URL)}" download="Mbokamaket-v1.0.0.apk" type="application/vnd.android.package-archive">Télécharger l’APK Android</a></div></div>`;
 
 const querySupabase = async (table, id, columns) => {
@@ -34,6 +44,19 @@ const querySupabase = async (table, id, columns) => {
     return rows[0] || null;
   } catch (error) {
     console.error('[share] Supabase request failed', error);
+    return null;
+  }
+};
+const queryProfileByUsername = async (username) => {
+  try {
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/public_profiles?select=${encodeURIComponent('id,name,business_name,username,bio,avatar')}&username=eq.${encodeURIComponent(username.toLowerCase())}&limit=1`, {
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
+    });
+    if (!response.ok) return null;
+    const rows = await response.json();
+    return rows[0] || null;
+  } catch (error) {
+    console.error('[share] Profile lookup by username failed', error);
     return null;
   }
 };
@@ -103,7 +126,13 @@ export default async function handler(request, response) {
     }
 
   if (type === 'product') {
-    const product = slug ? await queryProductBySlug(slug) : await querySupabase('produits', id, 'id,title,description,price,currency,images,location');
+    const routeValue = slug || id;
+    const productId = productIdFromSlug(routeValue);
+    const product = slug
+      ? await queryProductBySlug(slug)
+      : productId
+        ? await querySupabase('produits', productId, 'id,title,description,price,currency,images,location')
+        : await queryProductBySlug(routeValue);
     if (!product) {
       sendHtml(response, 404, '<h1>Produit introuvable.</h1>');
       return;
@@ -112,7 +141,7 @@ export default async function handler(request, response) {
     const description = String(product.description || `Découvrez ${title} sur Mbokamarket RDC.`).slice(0, 160);
     const image = firstImage(product.images);
     const canonical = `${SITE_URL}/produit/${encodeURIComponent(productSlug(product))}`;
-    const appUrl = `mbokamaket://product/${encodeURIComponent(String(product.id))}`;
+    const appUrl = `mbokamaket://product/${encodeURIComponent(productSlug(product))}`;
     const price = Number(product.price || 0).toLocaleString('fr-FR');
     const currency = product.currency === 'USD' ? '$' : product.currency || 'FC';
     const siteProductUrl = `${SITE_URL}/produit/${encodeURIComponent(productSlug(product))}`;
@@ -121,16 +150,18 @@ export default async function handler(request, response) {
       return;
   }
 
-    const profile = await querySupabase('public_profiles', id, 'id,name,business_name,username,bio,avatar');
+    const profile = await queryProfileByUsername(id)
+      || await querySupabase('public_profiles', id, 'id,name,business_name,username,bio,avatar');
     if (!profile) {
       sendHtml(response, 404, '<h1>Profil introuvable.</h1>');
       return;
     }
     const name = profile.business_name || profile.name || 'Profil Mbokamarket RDC';
     const description = String(profile.bio || `Découvrez le profil de ${name} sur Mbokamarket RDC.`).slice(0, 160);
-    const canonical = `${SITE_URL}/profile/${encodeURIComponent(id)}`;
-    const siteProfileUrl = `${SITE_URL}/?profil=${encodeURIComponent(id)}`;
-    const appUrl = `mbokamaket://profile/${encodeURIComponent(id)}`;
+    const profileIdentifier = profile.username || profile.id;
+    const canonical = `${SITE_URL}/profile/${encodeURIComponent(profileIdentifier)}`;
+    const siteProfileUrl = `${SITE_URL}/?profil=${encodeURIComponent(profile.id)}`;
+    const appUrl = `mbokamaket://profile/${encodeURIComponent(profileIdentifier)}`;
     const content = `${profile.avatar ? `<img class="cover" src="${escapeHtml(profile.avatar)}" alt="${escapeHtml(name)}">` : ''}<div class="body"><div class="eyebrow">Profil Mbokamarket RDC</div><h1 class="title">${escapeHtml(name)}</h1>${profile.username ? `<p class="description">@${escapeHtml(profile.username)}</p>` : ''}<p class="description">${escapeHtml(description)}</p>${shareActions(appUrl, siteProfileUrl)}</div>`;
     sendHtml(response, 200, render({ title: `${name} | Mbokamarket RDC`, description, image: profile.avatar, canonical, content }));
   } catch (error) {
