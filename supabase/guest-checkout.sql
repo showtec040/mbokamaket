@@ -1,7 +1,8 @@
 -- Apply this migration before deploying guest checkout.
 -- The guest's real name belongs to the private order row, not the public profile.
--- Configure Supabase Auth CAPTCHA with the matching Cloudflare Turnstile secret,
--- and set VITE_TURNSTILE_SITE_KEY to the corresponding public site key at build time.
+-- Set TURNSTILE_SECRET_KEY as a Supabase Edge Function secret and configure
+-- VITE_TURNSTILE_SITE_KEY at build time. Disable CAPTCHA in Supabase Auth settings;
+-- guest-order-captcha.sql enforces CAPTCHA only for anonymous order creation.
 alter table public.orders
   add column if not exists buyer_name text;
 

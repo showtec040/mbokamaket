@@ -334,22 +334,19 @@ export default function CommercePage({
     setBusy(true);
     try {
       let buyerId = user?.id;
+      let guestCaptchaToken: string | null = null;
       if (guestCheckout) {
-        const verifiedCaptchaToken = captchaToken;
+        guestCaptchaToken = captchaToken;
         setCaptchaToken("");
         setCaptchaError("");
         captchaRef.current?.reset();
         const { data: authData, error: authError } = await supabase.auth.signInAnonymously({
           options: {
             data: { name: "Acheteur invité", role: "buyer", account_type: "personal" },
-            captchaToken: verifiedCaptchaToken,
           },
         });
         if (authError) {
-          const isCaptchaError = /captcha|invalid-input-response/i.test(authError.message);
-          throw new Error(isCaptchaError
-            ? `La vérification CAPTCHA a échoué (${authError.message}). Recommencez le CAPTCHA.`
-            : `Supabase n’a pas pu créer le compte invité (${authError.message}). Vérifiez le déclencheur de profil en base de données.`);
+          throw new Error(`Supabase n’a pas pu créer le compte invité (${authError.message}). Vérifiez le déclencheur de profil en base de données.`);
         }
         if (!authData.user) {
           throw new Error("Impossible de préparer la commande invitée. Connectez-vous pour continuer.");
@@ -372,6 +369,17 @@ export default function CommercePage({
       const paymentLabel = simpleRetailSeller
         ? DELIVERY_OR_PICKUP_LABEL
         : "Paiement à convenir avec le vendeur";
+      if (guestCheckout) {
+        if (!guestCaptchaToken) {
+          throw new Error("La vérification CAPTCHA a expiré. Recommencez avant de commander.");
+        }
+        const { error: captchaVerificationError } = await supabase.functions.invoke("verify-guest-order-captcha", {
+          body: { captchaToken: guestCaptchaToken },
+        });
+        if (captchaVerificationError) {
+          throw new Error(`Vérification CAPTCHA refusée : ${captchaVerificationError.message}`);
+        }
+      }
       const submittedItems = checkoutGroup.items.map((item) => ({
         product: {
           id: item.product.id,
