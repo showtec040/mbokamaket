@@ -1,7 +1,7 @@
 {
   "name": "Mbokamarket RDC",
   "short_name": "Mbokamarket RDC",
-  "description": "Achetez et vendez près de chez vous.",
+  "description": "MbokaMarket est une place de marché de petites annonces en République démocratique du Congo. Découvrez des produits, véhicules, biens immobiliers et services, publiez vos annonces et échangez directement avec des acheteurs et vendeurs partout en RDC.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
@@ -10,16 +10,16 @@
   "lang": "fr",
   "icons": [
     {
-      "src": "/favicon.png",
-      "sizes": "512x512",
+      "src": "/pwa-192.png",
+      "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
-      "src": "/favicon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "src": "/pwa-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
     }
   ]
 }

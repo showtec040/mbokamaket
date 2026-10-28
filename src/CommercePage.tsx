@@ -17,6 +17,13 @@ import {
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
 import { getCommerceCartItemKey } from "./commerceCartUtils";
+import {
+  getCartItemUnitPrice,
+  getCartProductQuantity,
+  getCartSubtotal,
+  hasWholesaleOffer,
+  WHOLESALE_MIN_QUANTITY,
+} from "./wholesalePricing";
 
 const FC_PER_USD = 2300;
 const DELIVERY_OR_PICKUP_LABEL = "À la livraison ou au retrait";
@@ -25,10 +32,24 @@ type DeliverySettings = {
   baseFee: number;
   zoneFees?: Record<string, number>;
 };
+type PaymentCondition = "delivery_or_pickup" | "prepaid";
+type SellerPaymentSettings = {
+  enabled?: boolean;
+  operator?: string;
+  phoneNumber?: string;
+  instructions?: string;
+  paymentConditions?: PaymentCondition[];
+};
+type PrepaidPaymentDetails = {
+  operator?: string | null;
+  phoneNumber?: string | null;
+  instructions?: string | null;
+} | null;
 export type CommerceProduct = {
   id: string;
   title: string;
   price: number;
+  wholesalePrice?: number | null;
   currency: string;
   image: string;
   sellerId: string;
@@ -120,10 +141,7 @@ const groupCartItems = (items: CommerceCartItem[]) => {
     seller: sellerItems[0].product.seller || "Vendeur Mbokamaket",
     currency: getCurrency(sellerItems[0].product.currency),
     items: sellerItems,
-    subtotal: sellerItems.reduce(
-      (total, item) => total + Number(item.product.price) * item.quantity,
-      0,
-    ),
+    subtotal: getCartSubtotal(sellerItems),
     deliverySettings: sellerItems[0].product.deliverySettings,
     accountType: sellerItems[0].product.sellerAccountType,
   }));
@@ -131,6 +149,14 @@ const groupCartItems = (items: CommerceCartItem[]) => {
 
 const selectedSpecificationsLabel = (selection?: Record<string, string>) =>
   Object.entries(selection ?? {}).map(([label, value]) => `${label.replace(" disponibles", "")} : ${value}`).join(" · ");
+
+const getCommerceErrorMessage = (error: unknown, fallback: string) => {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "object" && error !== null && "message" in error && typeof error.message === "string") {
+    return error.message;
+  }
+  return fallback;
+};
 
 export default function CommercePage({
   view,
@@ -141,7 +167,9 @@ export default function CommercePage({
   onRequestLogin,
   onOrderCreated,
 }: Props) {
-  const [screen, setScreen] = useState<"cart" | "checkout" | "orders">(view);
+  const [screenState, setScreenState] = useState<{ view: Props["view"]; screen: "cart" | "checkout" | "orders" }>(() => ({ view, screen: view }));
+  const screen = screenState.view === view ? screenState.screen : view;
+  const setScreen = (nextScreen: "cart" | "checkout" | "orders") => setScreenState({ view, screen: nextScreen });
   const [checkoutKey, setCheckoutKey] = useState<string | null>(null);
   const [guestBuyer, setGuestBuyer] = useState<CommerceUser | null>(null);
   const [guestName, setGuestName] = useState(user?.isAnonymous ? user.fullName ?? "" : "");
@@ -155,6 +183,15 @@ export default function CommercePage({
   const [deliveryCoordinates, setDeliveryCoordinates] = useState<{ latitude: number; longitude: number } | null>(null);
   const [locationLoading, setLocationLoading] = useState(false);
   const [locationError, setLocationError] = useState("");
+  const [sellerPaymentSettings, setSellerPaymentSettings] = useState<SellerPaymentSettings | null>(null);
+  const [businessPrepaidAvailable, setBusinessPrepaidAvailable] = useState(false);
+  const [prepaidPaymentDetails, setPrepaidPaymentDetails] = useState<PrepaidPaymentDetails>(null);
+  const [paymentChoice, setPaymentChoice] = useState<"seller_condition" | "mobile_money" | null>(null);
+  const [selectedPaymentCondition, setSelectedPaymentCondition] = useState<PaymentCondition | null>(null);
+  const [paymentProofFile, setPaymentProofFile] = useState<File | null>(null);
+  const [paymentSettingsLoading, setPaymentSettingsLoading] = useState(false);
+  const [paymentSettingsSellerId, setPaymentSettingsSellerId] = useState<string | null>(null);
+  const [paymentSettingsError, setPaymentSettingsError] = useState("");
   const [busy, setBusy] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [notificationNotice, setNotificationNotice] = useState("");
@@ -174,10 +211,26 @@ export default function CommercePage({
     ? getDeliveryFee(checkoutGroup.deliverySettings, checkoutGroup.currency, deliveryZone)
     : 0;
   const checkoutTotal = (checkoutGroup?.subtotal ?? 0) + deliveryFee;
-
-  useEffect(() => {
-    setScreen(view);
-  }, [view]);
+  const requiresBusinessVerification = ["boutique", "magasin", "boutique_pro", "magasin_pro"].includes(checkoutGroup?.accountType || "");
+  const checkoutPaymentSettingsLoading = paymentSettingsLoading
+    || Boolean(checkoutGroup && paymentSettingsSellerId !== checkoutGroup.sellerId);
+  const configuredPaymentConditions = sellerPaymentSettings?.paymentConditions ?? [];
+  const paymentConditions: PaymentCondition[] = simpleRetailSeller
+    ? ["delivery_or_pickup", ...(businessPrepaidAvailable ? ["prepaid" as const] : [])]
+    : configuredPaymentConditions.filter((condition) => condition !== "prepaid" || !requiresBusinessVerification || businessPrepaidAvailable);
+  if (businessPrepaidAvailable && !paymentConditions.includes("prepaid")) paymentConditions.push("prepaid");
+  if (requiresBusinessVerification && paymentConditions.length === 0) paymentConditions.push("delivery_or_pickup");
+  const mobileMoneyEnabled = Boolean(
+    sellerPaymentSettings?.enabled
+      && !simpleRetailSeller
+      && (!requiresBusinessVerification || businessPrepaidAvailable),
+  );
+  const effectivePaymentChoice = simpleRetailSeller ? "seller_condition" : paymentChoice;
+  const effectivePaymentCondition = simpleRetailSeller
+    ? selectedPaymentCondition === "prepaid" && businessPrepaidAvailable ? "prepaid" : "delivery_or_pickup"
+    : selectedPaymentCondition;
+  const requiresPaymentProof = effectivePaymentChoice === "mobile_money"
+    || (effectivePaymentChoice === "seller_condition" && effectivePaymentCondition === "prepaid");
 
   useEffect(() => {
     if (errorMessage && screen === "checkout") {
@@ -186,16 +239,93 @@ export default function CommercePage({
   }, [errorMessage, screen]);
 
   useEffect(() => {
+    if (screen !== "checkout" || !checkoutGroup || !supabase) return;
+    const client = supabase;
+    let active = true;
+    const loadPaymentSettings = async () => {
+      setPaymentSettingsLoading(true);
+      setPaymentSettingsSellerId(null);
+      setPaymentSettingsError("");
+      setSellerPaymentSettings(null);
+      setBusinessPrepaidAvailable(false);
+      setPrepaidPaymentDetails(null);
+      setSelectedPaymentCondition(null);
+      setPaymentChoice(null);
+      setPaymentProofFile(null);
+      try {
+        const { data: profile, error: profileError } = await client
+          .from("public_profiles")
+          .select("account_type,mobile_money_settings")
+          .eq("id", checkoutGroup.sellerId)
+          .maybeSingle();
+        if (profileError) throw profileError;
+
+        const accountType = profile?.account_type || checkoutGroup.accountType || "";
+        const settings = (profile?.mobile_money_settings ?? null) as SellerPaymentSettings | null;
+        const isBusiness = ["boutique", "magasin", "boutique_pro", "magasin_pro"].includes(accountType);
+        let prepaidAvailable = false;
+        let prepaidDetails: PrepaidPaymentDetails = null;
+        if (isBusiness) {
+          const { data: availability, error: availabilityError } = await client.rpc("business_prepaid_available", {
+            p_seller_id: checkoutGroup.sellerId,
+          });
+          if (availabilityError) throw availabilityError;
+          prepaidAvailable = availability === true;
+          if (prepaidAvailable) {
+            const { data: details, error: detailsError } = await client.rpc("business_prepaid_payment_details", {
+              p_seller_id: checkoutGroup.sellerId,
+            });
+            if (detailsError) throw detailsError;
+            prepaidDetails = (Array.isArray(details) ? details[0] : details) as PrepaidPaymentDetails;
+            prepaidAvailable = Boolean(prepaidDetails?.phoneNumber);
+          }
+        }
+        if (!active) return;
+        setSellerPaymentSettings(settings);
+        setBusinessPrepaidAvailable(prepaidAvailable);
+        setPrepaidPaymentDetails(prepaidDetails);
+        const availableConditions: PaymentCondition[] = accountType === "boutique" || accountType === "magasin"
+          ? ["delivery_or_pickup", ...(prepaidAvailable ? ["prepaid" as const] : [])]
+          : (settings?.paymentConditions ?? []).filter((condition) =>
+            condition !== "prepaid" || !isBusiness || prepaidAvailable,
+          );
+        if (prepaidAvailable && !availableConditions.includes("prepaid")) availableConditions.push("prepaid");
+        if (isBusiness && availableConditions.length === 0) availableConditions.push("delivery_or_pickup");
+        setSelectedPaymentCondition(availableConditions[0] ?? null);
+        setPaymentChoice(availableConditions.length
+          ? "seller_condition"
+          : settings?.enabled && accountType !== "boutique" && accountType !== "magasin"
+            ? "mobile_money"
+            : null);
+      } catch (settingsError) {
+        if (!active) return;
+        console.error("[checkout] impossible de charger les conditions de paiement", settingsError);
+        setPaymentSettingsError(getCommerceErrorMessage(settingsError, "Impossible de charger les conditions de paiement du vendeur."));
+      } finally {
+        if (active) {
+          setPaymentSettingsSellerId(checkoutGroup.sellerId);
+          setPaymentSettingsLoading(false);
+        }
+      }
+    };
+    const timer = window.setTimeout(() => { void loadPaymentSettings(); }, 0);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [checkoutGroup, screen]);
+
+  useEffect(() => {
     if (screen !== "orders" || !activeBuyerId) return;
     const client = supabase;
     if (!client) {
-      setErrorMessage("La configuration de la boutique n’est pas disponible.");
-      return;
+      const timer = window.setTimeout(() => setErrorMessage("La configuration de la boutique n’est pas disponible."), 0);
+      return () => window.clearTimeout(timer);
     }
     let active = true;
-    setOrdersLoading(true);
-    setErrorMessage("");
     const loadOrders = async () => {
+      setOrdersLoading(true);
+      setErrorMessage("");
       try {
         const { data, error } = await client
           .from("orders")
@@ -217,9 +347,10 @@ export default function CommercePage({
         if (active) setOrdersLoading(false);
       }
     };
-    void loadOrders();
+    const timer = window.setTimeout(() => { void loadOrders(); }, 0);
     return () => {
       active = false;
+      window.clearTimeout(timer);
     };
   }, [screen, activeBuyerId]);
 
@@ -320,6 +451,34 @@ export default function CommercePage({
       setErrorMessage("Confirmez la vérification de sécurité avant de commander.");
       return;
     }
+    if (checkoutPaymentSettingsLoading) {
+      setErrorMessage("Chargement des conditions de paiement du vendeur. Réessayez dans un instant.");
+      return;
+    }
+    if (paymentSettingsError) {
+      setErrorMessage(`Les conditions de paiement n’ont pas pu être vérifiées : ${paymentSettingsError}`);
+      return;
+    }
+    if (requiresBusinessVerification && !effectivePaymentChoice) {
+      setErrorMessage("Ce vendeur n’a pas configuré de condition de paiement utilisable pour cette commande. Contactez-le avant de commander.");
+      return;
+    }
+    if ((paymentConditions.length > 0 || mobileMoneyEnabled) && !effectivePaymentChoice) {
+      setErrorMessage("Choisissez une condition ou un moyen de paiement.");
+      return;
+    }
+    if (effectivePaymentChoice === "seller_condition" && !effectivePaymentCondition) {
+      setErrorMessage("Choisissez une condition de paiement proposée par le vendeur.");
+      return;
+    }
+    if (requiresPaymentProof && !paymentProofFile) {
+      setErrorMessage("Joignez la capture du paiement anticipé pour envoyer la commande.");
+      return;
+    }
+    if (requiresPaymentProof && guestCheckout) {
+      setErrorMessage("Connectez-vous pour joindre une preuve de paiement et commander.");
+      return;
+    }
     if (checkoutGroup.deliverySettings?.enabled) {
       if (!deliveryZone.trim() || !deliveryAddress.trim()) {
         setErrorMessage("Indiquez votre commune et votre adresse précise de livraison.");
@@ -366,9 +525,6 @@ export default function CommercePage({
       if (!globalThis.crypto?.randomUUID) {
         throw new Error("Ce navigateur ne permet pas de sécuriser la création de commande.");
       }
-      const paymentLabel = simpleRetailSeller
-        ? DELIVERY_OR_PICKUP_LABEL
-        : "Paiement à convenir avec le vendeur";
       if (guestCheckout) {
         if (!guestCaptchaToken) {
           throw new Error("La vérification CAPTCHA a expiré. Recommencez avant de commander.");
@@ -384,7 +540,8 @@ export default function CommercePage({
         product: {
           id: item.product.id,
           title: item.product.title,
-          price: item.product.price,
+          price: getCartItemUnitPrice(item, checkoutGroup.items),
+          wholesalePrice: null,
           currency: getCurrency(item.product.currency),
           sellerId: item.product.sellerId,
           categoryId: item.product.categoryId,
@@ -397,6 +554,30 @@ export default function CommercePage({
         quantity: item.quantity,
       }));
       const orderId = globalThis.crypto.randomUUID();
+      let paymentProofPath: string | null = null;
+      if (requiresPaymentProof && paymentProofFile) {
+        if (!["image/jpeg", "image/png", "image/webp"].includes(paymentProofFile.type)) {
+          throw new Error("La preuve de paiement doit être une image JPEG, PNG ou WebP.");
+        }
+        if (paymentProofFile.size > 10 * 1024 * 1024) {
+          throw new Error("La preuve de paiement ne peut pas dépasser 10 Mo.");
+        }
+        const extension = paymentProofFile.type === "image/jpeg" ? "jpg" : paymentProofFile.type.split("/")[1];
+        paymentProofPath = `${buyerId}/${globalThis.crypto.randomUUID()}.${extension}`;
+        const { error: uploadError } = await supabase.storage
+          .from("order-payment-proofs")
+          .upload(paymentProofPath, paymentProofFile, { contentType: paymentProofFile.type, upsert: false });
+        if (uploadError) throw uploadError;
+      }
+      const paymentDueAtDelivery = effectivePaymentChoice === "seller_condition"
+        && effectivePaymentCondition === "delivery_or_pickup";
+      const paymentLabel = effectivePaymentChoice === "mobile_money"
+        ? `Payer par ${sellerPaymentSettings?.operator || "Mobile Money"} · ${sellerPaymentSettings?.phoneNumber || ""}`
+        : effectivePaymentCondition === "prepaid"
+          ? `Paiement intégral à l’avance · ${prepaidPaymentDetails?.operator || sellerPaymentSettings?.operator || "Mobile Money"} · ${prepaidPaymentDetails?.phoneNumber || sellerPaymentSettings?.phoneNumber || ""}`
+          : effectivePaymentCondition === "delivery_or_pickup"
+            ? DELIVERY_OR_PICKUP_LABEL
+            : "Paiement à confirmer avec le vendeur";
       const { error } = await supabase.from("orders").insert({
         id: orderId,
         buyer_id: buyerId,
@@ -413,7 +594,8 @@ export default function CommercePage({
         delivery_latitude: deliveryCoordinates?.latitude ?? null,
         delivery_longitude: deliveryCoordinates?.longitude ?? null,
         payment_method: paymentLabel,
-        payment_due_at_delivery: simpleRetailSeller,
+        payment_due_at_delivery: paymentDueAtDelivery,
+        payment_proof_path: paymentProofPath,
       });
       if (error) throw error;
       try {
@@ -440,7 +622,8 @@ export default function CommercePage({
       setCheckoutKey(null);
       setScreen("orders");
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Impossible d’enregistrer la commande.");
+      console.error("[checkout] impossible d’enregistrer la commande", error);
+      setErrorMessage(getCommerceErrorMessage(error, "Impossible d’enregistrer la commande."));
     } finally {
       setBusy(false);
     }
@@ -552,7 +735,14 @@ export default function CommercePage({
                         : <div className="grid size-20 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-400"><Package size={23} /></div>}
                       <div className="min-w-0 flex-1">
                         <h3 className="font-semibold">{item.product.title}</h3>
-                        <p className="mt-1 text-sm font-bold text-[#143ca8]">{formatAmount(item.product.price, group.currency)}</p>
+                        <p className="mt-1 text-sm font-bold text-[#143ca8]">{formatAmount(getCartItemUnitPrice(item, items), group.currency)}</p>
+                        {hasWholesaleOffer(item) && (
+                          <p className="mt-1 text-xs font-medium text-emerald-700">
+                            {getCartItemUnitPrice(item, items) < item.product.price
+                              ? `Prix de gros appliqué (${getCartProductQuantity(items, item.product.id)} unités)`
+                              : `Prix de gros dès ${WHOLESALE_MIN_QUANTITY} unités : ${formatAmount(Number(item.product.wholesalePrice), group.currency)}`}
+                          </p>
+                        )}
                         {selectedSpecificationsLabel(item.selectedSpecifications) && (
                           <p className="mt-1 text-xs leading-5 text-slate-500">{selectedSpecificationsLabel(item.selectedSpecifications)}</p>
                         )}
@@ -577,7 +767,7 @@ export default function CommercePage({
                           </button>
                         </div>
                       </div>
-                      <p className="shrink-0 text-sm font-semibold">{formatAmount(item.product.price * item.quantity, group.currency)}</p>
+                      <p className="shrink-0 text-sm font-semibold">{formatAmount(getCartItemUnitPrice(item, items) * item.quantity, group.currency)}</p>
                     </div>
                   ))}
                 </div>
@@ -606,8 +796,18 @@ export default function CommercePage({
                 <div className="mt-4 divide-y divide-slate-100">
                   {checkoutGroup.items.map((item) => (
                     <div key={getCommerceCartItemKey(item)} className="flex justify-between gap-4 py-3 text-sm">
-                      <span>{item.quantity} × {item.product.title}{selectedSpecificationsLabel(item.selectedSpecifications) ? <span className="block text-xs text-slate-500">{selectedSpecificationsLabel(item.selectedSpecifications)}</span> : null}</span>
-                      <strong>{formatAmount(item.product.price * item.quantity, checkoutGroup.currency)}</strong>
+                      <span>
+                        {item.quantity} × {item.product.title}
+                        {selectedSpecificationsLabel(item.selectedSpecifications) ? <span className="block text-xs text-slate-500">{selectedSpecificationsLabel(item.selectedSpecifications)}</span> : null}
+                        {hasWholesaleOffer(item) && (
+                          <span className="block text-xs font-medium text-emerald-700">
+                            {getCartItemUnitPrice(item, checkoutGroup.items) < item.product.price
+                              ? `Prix de gros appliqué (${getCartProductQuantity(checkoutGroup.items, item.product.id)} unités)`
+                              : `Prix de gros dès ${WHOLESALE_MIN_QUANTITY} unités`}
+                          </span>
+                        )}
+                      </span>
+                      <strong>{formatAmount(getCartItemUnitPrice(item, checkoutGroup.items) * item.quantity, checkoutGroup.currency)}</strong>
                     </div>
                   ))}
                 </div>
@@ -688,14 +888,83 @@ export default function CommercePage({
 
               <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
                 <h2 className="font-display text-lg font-bold">Conditions de paiement</h2>
-                {simpleRetailSeller ? (
-                  <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900">
-                    {DELIVERY_OR_PICKUP_LABEL}
-                  </div>
+                {checkoutPaymentSettingsLoading ? (
+                  <p role="status" className="mt-4 text-sm text-slate-500">Chargement des moyens de paiement…</p>
+                ) : paymentSettingsError ? (
+                  <p role="alert" className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">{paymentSettingsError}</p>
                 ) : (
-                  <p className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-                    Le paiement est à convenir directement avec le vendeur après l’envoi de la commande.
-                  </p>
+                  <>
+                    {paymentConditions.map((condition) => (
+                      <button
+                        key={condition}
+                        type="button"
+                        role="radio"
+                        aria-checked={effectivePaymentCondition === condition && effectivePaymentChoice === "seller_condition"}
+                        onClick={() => {
+                          setSelectedPaymentCondition(condition);
+                          setPaymentChoice("seller_condition");
+                          setPaymentProofFile(null);
+                        }}
+                        className={`mt-3 flex w-full items-center gap-3 rounded-xl border p-3 text-left text-sm ${effectivePaymentCondition === condition && effectivePaymentChoice === "seller_condition" ? "border-[#143ca8] bg-blue-50 text-[#143ca8]" : "border-slate-200 text-slate-700"}`}
+                      >
+                        <span className={`grid size-4 shrink-0 place-items-center rounded-full border ${effectivePaymentCondition === condition && effectivePaymentChoice === "seller_condition" ? "border-[#143ca8]" : "border-slate-400"}`}>
+                          {effectivePaymentCondition === condition && effectivePaymentChoice === "seller_condition" && <span className="size-2 rounded-full bg-[#143ca8]" />}
+                        </span>
+                        {condition === "prepaid" ? "Paiement intégral à l’avance" : DELIVERY_OR_PICKUP_LABEL}
+                      </button>
+                    ))}
+                    {mobileMoneyEnabled && !simpleRetailSeller && (
+                      <button
+                        type="button"
+                        role="radio"
+                        aria-checked={effectivePaymentChoice === "mobile_money"}
+                        onClick={() => {
+                          setPaymentChoice("mobile_money");
+                          setPaymentProofFile(null);
+                        }}
+                        className={`mt-3 flex w-full items-center gap-3 rounded-xl border p-3 text-left text-sm ${effectivePaymentChoice === "mobile_money" ? "border-[#143ca8] bg-blue-50 text-[#143ca8]" : "border-slate-200 text-slate-700"}`}
+                      >
+                        <span className={`grid size-4 shrink-0 place-items-center rounded-full border ${effectivePaymentChoice === "mobile_money" ? "border-[#143ca8]" : "border-slate-400"}`}>
+                          {effectivePaymentChoice === "mobile_money" && <span className="size-2 rounded-full bg-[#143ca8]" />}
+                        </span>
+                        Payer maintenant par {sellerPaymentSettings?.operator || "Mobile Money"}
+                      </button>
+                    )}
+                    {effectivePaymentChoice === "seller_condition" && effectivePaymentCondition === "prepaid" && (
+                      <div className="mt-3 rounded-xl bg-blue-50 p-3 text-sm leading-5 text-blue-900">
+                        <p className="font-semibold">{prepaidPaymentDetails?.operator || sellerPaymentSettings?.operator || "Mobile Money"}</p>
+                        <p>{prepaidPaymentDetails?.phoneNumber || sellerPaymentSettings?.phoneNumber}</p>
+                        {(prepaidPaymentDetails?.instructions || sellerPaymentSettings?.instructions) && (
+                          <p className="mt-1">{prepaidPaymentDetails?.instructions || sellerPaymentSettings?.instructions}</p>
+                        )}
+                      </div>
+                    )}
+                    {effectivePaymentChoice === "mobile_money" && (
+                      <div className="mt-3 rounded-xl bg-blue-50 p-3 text-sm leading-5 text-blue-900">
+                        <p className="font-semibold">{sellerPaymentSettings?.operator || "Mobile Money"}</p>
+                        <p>{sellerPaymentSettings?.phoneNumber}</p>
+                        {sellerPaymentSettings?.instructions && <p className="mt-1">{sellerPaymentSettings.instructions}</p>}
+                      </div>
+                    )}
+                    {requiresPaymentProof && (
+                      <label className="form-control mt-4 gap-2">
+                        <span className="text-sm font-medium text-slate-700">Capture du paiement *</span>
+                        <input
+                          required
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp"
+                          onChange={(event) => setPaymentProofFile(event.target.files?.[0] ?? null)}
+                          className="file-input file-input-bordered w-full"
+                        />
+                        <span className="text-xs text-slate-500">Image JPEG, PNG ou WebP, 10 Mo maximum.</span>
+                      </label>
+                    )}
+                    {requiresBusinessVerification && paymentConditions.length === 0 && !mobileMoneyEnabled && (
+                      <p role="status" className="mt-3 rounded-xl bg-amber-50 p-3 text-sm leading-5 text-amber-800">
+                        Ce vendeur n’a pas configuré de moyen de paiement disponible. Contactez-le avant de passer commande.
+                      </p>
+                    )}
+                  </>
                 )}
               </section>
             </div>
@@ -704,7 +973,7 @@ export default function CommercePage({
               <CheckCircle2 className="text-emerald-600" size={24} />
               <h2 className="mt-3 font-display text-lg font-bold">Prêt à commander</h2>
               <p className="mt-2 text-sm leading-6 text-slate-500">Le vendeur recevra votre commande et devra la confirmer. Les totaux et la disponibilité sont vérifiés par le serveur.</p>
-              <button type="submit" disabled={busy} className="btn btn-primary mt-5 w-full bg-[#143ca8]">
+              <button type="submit" disabled={busy || checkoutPaymentSettingsLoading} className="btn btn-primary mt-5 w-full bg-[#143ca8]">
                 {busy ? "Envoi en cours..." : guestCheckout ? "Commander sans compte" : "Confirmer la commande"}
               </button>
               {guestCheckout && <button type="button" onClick={onRequestLogin} disabled={busy} className="btn btn-ghost mt-2 w-full">Se connecter plutôt</button>}

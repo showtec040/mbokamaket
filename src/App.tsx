@@ -1,14 +1,17 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ChangeEvent, ComponentType, FormEvent } from "react";
+import type { ChangeEvent, ComponentType, FormEvent, ReactNode } from "react";
 import {
   Bell,
+  BadgeCheck,
+  BarChart3,
   CarFront,
   ChevronLeft,
   ChevronRight,
   ClipboardList,
   Eye,
   EyeOff,
+  Flag,
   Gamepad2,
   Headphones,
   Home,
@@ -17,21 +20,26 @@ import {
   LoaderCircle,
   LogOut,
   MapPin,
+  MessageCircle,
   Menu,
   Minus,
   Package,
   Phone,
   Plus,
+  RefreshCw,
   Search,
   ShoppingCart,
   ShieldCheck,
   Share2,
   Smartphone,
+  Store,
   Trophy,
   Tv,
   Trash2,
+  Truck,
   UserRound,
   X,
+  Warehouse,
 } from "lucide-react";
 import { FaFacebookF, FaGoogle, FaInstagram, FaTiktok, FaYoutube } from "react-icons/fa6";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -39,14 +47,27 @@ import { supabase, supabaseConfigured } from "./lib/supabase";
 import CommercePage from "./CommercePage";
 import type { CommerceCartItem, CommerceProduct } from "./CommercePage";
 import { getCommerceCartItemKey, isCommerceCartItem } from "./commerceCartUtils";
+import BusinessOrdersPage from "./BusinessOrdersPage";
+import MessagesPage from "./MessagesPage";
 import SellerOrdersPage from "./SellerOrdersPage";
 import StockManagementPage from "./StockManagementPage";
 import ProductFeedbackSection from "./ProductFeedbackSection";
+import ReportDialog from "./ReportDialog";
+import { PRODUCT_REPORT_REASONS, USER_REPORT_REASONS } from "./reportReasons";
 import NoticeDialog from "./NoticeDialog";
 import type { NoticeDialogVariant } from "./NoticeDialog";
+import SearchAlerts from "./SearchAlerts";
+import AccountConnectionsPage from "./AccountConnectionsPage";
+import SellerDeliverySettingsPage from "./SellerDeliverySettingsPage";
+import { normalizeSearchCity, searchCityLabel } from "./searchCity";
 import appIcon from "./assets/icon.png";
 import kambexaLogo from "./assets/kambexa.png";
 import { pageSeo, productPath, productSlug, Seo } from "./seo";
+
+interface BeforeInstallPromptEvent extends Event {
+  readonly userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
+  prompt: () => Promise<void>;
+}
 
 function PasswordResetPage({ onClose, onLogin }: { onClose: () => void; onLogin: () => void }) {
   const [password, setPassword] = useState("");
@@ -136,6 +157,7 @@ type Product = {
   location: string;
   price: number;
   originalPrice: number | null;
+  wholesalePrice?: number | null;
   currency: string;
   categoryId: string;
   category: string;
@@ -147,6 +169,7 @@ type Product = {
   sellerUsername: string;
   sellerBio: string;
   sellerAddress: string;
+  sellerCity?: string;
   verified: boolean;
   status: string;
   featured: boolean;
@@ -166,7 +189,22 @@ type Product = {
     zoneFees?: Record<string, number>;
   } | null;
 };
-type User = { id: string; email?: string; fullName?: string; businessName?: string; username?: string; role?: string; accountType?: string; avatar?: string; isVerified: boolean; isAnonymous?: boolean; phone?: string; address?: string };
+type User = {
+  id: string;
+  email?: string;
+  fullName?: string;
+  businessName?: string;
+  username?: string;
+  role?: string;
+  accountType?: string;
+  businessOwnerId?: string;
+  businessRole?: "seller" | "delivery" | "manager";
+  avatar?: string;
+  isVerified: boolean;
+  isAnonymous?: boolean;
+  phone?: string;
+  address?: string;
+};
 type ProductSort = "recent" | "price_asc" | "price_desc" | "popular" | "relevance";
 type ProductVariant = { selectedSpecifications: Record<string, string>; quantity: number };
 const multiChoiceSpecificationLabels = new Set(["Tailles disponibles", "Pointures disponibles", "Couleurs disponibles"]);
@@ -232,11 +270,18 @@ type Notice = {
   message: string;
   read: boolean;
   createdAt: string;
+  type?: string | null;
+  relatedType?: string | null;
+  relatedId?: string | null;
+  eventId?: string | null;
 };
 
-const isSentMessageNotification = (notice: Pick<Notice, "title" | "message">) => {
+const isMessageNotification = (notice: Pick<Notice, "title" | "message" | "type" | "relatedType" | "eventId">) => {
+  if (notice.type?.toUpperCase() === "MESSAGE_RECEIVED"
+    || notice.relatedType?.toLowerCase() === "message"
+    || notice.eventId?.toLowerCase().startsWith("message_received:")) return true;
   const text = `${notice.title ?? ""} ${notice.message ?? ""}`.toLowerCase();
-  const blockedPatterns = [
+  const messagePatterns = [
     "message envoyé",
     "message envoye",
     "message sent",
@@ -247,8 +292,13 @@ const isSentMessageNotification = (notice: Pick<Notice, "title" | "message">) =>
     "sent you a message",
     "you sent",
     "sent to",
+    "nouveau message",
+    "vous avez reçu un message",
+    "vous avez recu un message",
+    "message received",
+    "unread message",
   ];
-  return blockedPatterns.some((pattern) => text.includes(pattern));
+  return messagePatterns.some((pattern) => text.includes(pattern));
 };
 type Row = {
   id?: string | number;
@@ -256,6 +306,7 @@ type Row = {
   location?: string;
   price?: number | string;
   original_price?: number | string | null;
+  wholesale_price?: number | string | null;
   currency?: string;
   category?: string;
   category_name?: string;
@@ -380,12 +431,24 @@ const normalizeWhatsAppNumber = (value?: string | null): string => {
   if (digits.startsWith("243")) return digits;
   return `243${digits.replace(/^0/, "")}`;
 };
+const normalizeSearchText = (value: string) =>
+  value.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().trim();
 const isBusinessDisplayAccount = (accountType?: string | null) =>
   accountType === "boutique"
   || accountType === "magasin"
   || accountType === "boutique_pro"
   || accountType === "magasin_pro"
   || accountType === "agence_immo";
+const isRetailAccount = (accountType?: string | null) =>
+  accountType === "boutique"
+  || accountType === "magasin"
+  || accountType === "boutique_pro"
+  || accountType === "magasin_pro";
+const getProductCity = (product: Product) => normalizeSearchCity(
+  isRetailAccount(product.sellerAccountType) && product.sellerCity
+    ? product.sellerCity
+    : product.location,
+);
 const getProfileDisplayName = (profile?: { name?: string | null; full_name?: string | null; username?: string | null; business_name?: string | null; account_type?: string | null } | null) => {
   const businessName = normalizeDisplayName(profile?.business_name);
   if (isBusinessDisplayAccount(profile?.account_type) && businessName) return businessName;
@@ -394,6 +457,17 @@ const getProfileDisplayName = (profile?: { name?: string | null; full_name?: str
     || businessName
     || normalizeDisplayName(profile?.username)
     || "";
+};
+const getAccountTypeLabel = (accountType?: string | null) => {
+  const labels: Record<string, string> = {
+    personal: "Personnel",
+    boutique: "Boutique",
+    magasin: "Magasin",
+    boutique_pro: "Boutique Pro",
+    magasin_pro: "Magasin Pro",
+    agence_immo: "Agence Immo",
+  };
+  return accountType ? labels[accountType] || "" : "";
 };
 const imageFrom = (images: unknown) => {
   if (Array.isArray(images)) return String(images[0] || "");
@@ -419,6 +493,62 @@ const imagesFrom = (images: unknown) => {
   }
   return [];
 };
+const optimizeProductImage = async (file: File): Promise<File> => {
+  if (file.type === "image/gif" || file.type === "image/svg+xml") return file;
+
+  let imageSource: CanvasImageSource;
+  let imageWidth: number;
+  let imageHeight: number;
+  let releaseImage: () => void;
+
+  if (typeof createImageBitmap === "function") {
+    const bitmap = await createImageBitmap(file);
+    imageSource = bitmap;
+    imageWidth = bitmap.width;
+    imageHeight = bitmap.height;
+    releaseImage = () => bitmap.close();
+  } else {
+    const imageUrl = URL.createObjectURL(file);
+    const image = new Image();
+    image.src = imageUrl;
+    try {
+      await image.decode();
+    } catch (decodeError) {
+      URL.revokeObjectURL(imageUrl);
+      throw decodeError;
+    }
+    imageSource = image;
+    imageWidth = image.naturalWidth;
+    imageHeight = image.naturalHeight;
+    releaseImage = () => URL.revokeObjectURL(imageUrl);
+  }
+
+  try {
+    const maxDimension = 1600;
+    const scale = Math.min(1, maxDimension / Math.max(imageWidth, imageHeight));
+    const width = Math.max(1, Math.round(imageWidth * scale));
+    const height = Math.max(1, Math.round(imageHeight * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Impossible de préparer l’image pour le téléchargement.");
+    context.drawImage(imageSource, 0, 0, width, height);
+    const optimizedBlob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/webp", 0.82));
+    canvas.width = 0;
+    canvas.height = 0;
+    if (!optimizedBlob) throw new Error("Impossible de compresser cette image.");
+    if (optimizedBlob.size >= file.size) return file;
+
+    const extension = optimizedBlob.type === "image/webp" ? "webp" : "png";
+    return new File([optimizedBlob], `${file.name.replace(/\.[^.]+$/, "")}.${extension}`, {
+      type: optimizedBlob.type,
+      lastModified: file.lastModified,
+    });
+  } finally {
+    releaseImage();
+  }
+};
 const specificationsFrom = (value: unknown): Record<string, string> => {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, String(item ?? "")]));
@@ -429,6 +559,7 @@ const mapProduct = (row: Row): Product => ({
   location: row.location || "RDC",
   price: Number(row.price || 0),
   originalPrice: row.original_price == null ? null : Number(row.original_price),
+  wholesalePrice: row.wholesale_price == null ? null : Number(row.wholesale_price),
   currency:
     row.currency === "USD"
       ? "$"
@@ -469,6 +600,10 @@ function App() {
   const [products, setProducts] = useState<Product[]>([]);
   const [commerceMode, setCommerceMode] = useState<"cart" | "orders" | null>(null);
   const [sellerOrdersOpen, setSellerOrdersOpen] = useState(false);
+  const [businessOrdersOpen, setBusinessOrdersOpen] = useState(false);
+  const [messagesOpen, setMessagesOpen] = useState(false);
+  const [messagesTarget, setMessagesTarget] = useState<{ id: string; name: string; productId: string; productTitle: string } | null>(null);
+  const [unreadMessageCount, setUnreadMessageCount] = useState(0);
   const [cartNotice, setCartNotice] = useState("");
   const [cartItems, setCartItems] = useState<CommerceCartItem[]>(() => {
     try {
@@ -481,6 +616,12 @@ function App() {
   });
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("Toutes");
+  const [cityFilter, setCityFilter] = useState("");
+  const [minPriceFilter, setMinPriceFilter] = useState("");
+  const [maxPriceFilter, setMaxPriceFilter] = useState("");
+  const [currencyFilter, setCurrencyFilter] = useState<"Toutes" | "FC" | "USD">("Toutes");
+  const [conditionFilter, setConditionFilter] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [productSort, setProductSort] = useState<ProductSort>("recent");
   const [productPage, setProductPage] = useState(1);
   const [mobileProductLimit, setMobileProductLimit] = useState(12);
@@ -496,7 +637,12 @@ function App() {
   const [manageProductsOpen, setManageProductsOpen] = useState(false);
   const [profileManagementOpen, setProfileManagementOpen] = useState(false);
   const [stockManagementOpen, setStockManagementOpen] = useState(false);
+  const [businessSpaceOpen, setBusinessSpaceOpen] = useState(false);
+  const [sellerDashboardOpen, setSellerDashboardOpen] = useState(false);
+  const [deliverySettingsOpen, setDeliverySettingsOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [favoritesOpen, setFavoritesOpen] = useState(false);
+  const [connectionsOpen, setConnectionsOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [heroProductIndex, setHeroProductIndex] = useState(0);
   const [heroPaused, setHeroPaused] = useState(false);
@@ -505,11 +651,14 @@ function App() {
   const [sellerFilter, setSellerFilter] = useState<{ id: string; name: string } | null>(null);
   const [favoriteIds, setFavoriteIds] = useState<string[]>(() => {
     try {
-      return JSON.parse(localStorage.getItem("mbokamarket-favorites") || "[]");
+      const parsed: unknown = JSON.parse(localStorage.getItem("mbokamarket-favorites") || "[]");
+      return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : [];
     } catch {
       return [];
     }
   });
+  const [favoritesLoading, setFavoritesLoading] = useState(false);
+  const favoriteWritesRef = useRef(new Set<string>());
   const [mobileOpen, setMobileOpen] = useState(false);
   const [mobileCategoriesOpen, setMobileCategoriesOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
@@ -517,6 +666,10 @@ function App() {
   const [nativeAppAvailable, setNativeAppAvailable] = useState(false);
   const [nativeAppCheckComplete, setNativeAppCheckComplete] = useState(false);
   const [nativeAppOpening, setNativeAppOpening] = useState(false);
+  const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [desktopInstallOpen, setDesktopInstallOpen] = useState(false);
+  const [desktopAppInstalled, setDesktopAppInstalled] = useState(() => window.matchMedia("(display-mode: standalone)").matches);
+  const [desktopInstallError, setDesktopInstallError] = useState("");
   const [visitorCount, setVisitorCount] = useState<number | null>(null);
   const [apkDownloadCount, setApkDownloadCount] = useState<number | null>(null);
   const [legalPage, setLegalPage] = useState<"conditions" | "confidentialite" | null>(null);
@@ -524,6 +677,13 @@ function App() {
   const mobileSearchRef = useRef<HTMLLabelElement>(null);
   const [loading, setLoading] = useState(Boolean(supabase));
   const [error, setError] = useState("");
+  const hasBusinessWorkspace = Boolean(
+    (["boutique", "magasin", "boutique_pro", "magasin_pro"].includes(user?.accountType || "") || user?.businessOwnerId)
+    && user?.businessRole !== "delivery",
+  );
+  const favoriteUserId = user?.id;
+  const isAnonymousUser = user?.isAnonymous ?? false;
+  const updateUnreadMessageCount = useCallback((count: number) => setUnreadMessageCount(count), []);
   useEffect(() => {
     try {
       localStorage.setItem("mbokamaket-web-cart", JSON.stringify(cartItems));
@@ -553,14 +713,97 @@ function App() {
       .select("id", { count: "exact", head: true });
     if (typeof count === "number") setApkDownloadCount(count);
   };
-  const toggleFavorite = (productId: string) => {
-    setFavoriteIds((current) => current.includes(productId)
+  const toggleFavorite = async (productId: string) => {
+    if (favoriteWritesRef.current.has(productId)) return;
+    const isFavorite = favoriteIds.includes(productId);
+    if (user && !user.isAnonymous) {
+      if (!supabase || favoritesLoading) {
+        setError("Les favoris de votre compte ne sont pas encore disponibles. Réessayez dans un instant.");
+        return;
+      }
+      favoriteWritesRef.current.add(productId);
+      setFavoriteIds((current) => isFavorite
+        ? current.filter((id) => id !== productId)
+        : [...current, productId]);
+      try {
+        const result = isFavorite
+          ? await supabase.from("favorites").delete().eq("user_id", user.id).eq("product_id", productId)
+          : await supabase.from("favorites").upsert(
+              { user_id: user.id, product_id: productId },
+              { onConflict: "user_id,product_id" },
+            );
+        if (result.error) throw result.error;
+      } catch (writeError) {
+        console.error("[favorites] synchronisation impossible", writeError);
+        setFavoriteIds((current) => isFavorite
+          ? current.includes(productId) ? current : [...current, productId]
+          : current.filter((id) => id !== productId));
+        setError("Impossible de synchroniser ce favori. Vérifiez votre connexion et réessayez.");
+      } finally {
+        favoriteWritesRef.current.delete(productId);
+      }
+      return;
+    }
+    setFavoriteIds((current) => isFavorite
       ? current.filter((id) => id !== productId)
       : [...current, productId]);
   };
   useEffect(() => {
-    localStorage.setItem("mbokamarket-favorites", JSON.stringify(favoriteIds));
-  }, [favoriteIds]);
+    if (!user || user.isAnonymous) {
+      localStorage.setItem("mbokamarket-favorites", JSON.stringify(favoriteIds));
+    }
+  }, [favoriteIds, user]);
+  useEffect(() => {
+    const client = supabase;
+    if (!favoriteUserId || isAnonymousUser || !client) {
+      try {
+        const stored: unknown = JSON.parse(localStorage.getItem("mbokamarket-favorites") || "[]");
+        setFavoriteIds(Array.isArray(stored) ? stored.filter((id): id is string => typeof id === "string") : []);
+      } catch (storageError) {
+        console.warn("[favorites] favoris locaux indisponibles", storageError);
+        setFavoriteIds([]);
+      }
+      setFavoritesLoading(false);
+      return;
+    }
+
+    let active = true;
+    setFavoritesLoading(true);
+    setFavoriteIds([]);
+    const loadFavorites = async () => {
+      const { data, error: loadError } = await client
+        .from("favorites")
+        .select("product_id")
+        .eq("user_id", favoriteUserId)
+        .order("created_at", { ascending: false });
+      if (!active) return;
+      if (loadError) {
+        console.error("[favorites] chargement impossible", loadError);
+        setError("Impossible de charger les favoris de votre compte.");
+        return;
+      }
+      setFavoriteIds((data ?? []).map((row) => String(row.product_id)).filter(Boolean));
+    };
+    void loadFavorites().finally(() => {
+      if (active) setFavoritesLoading(false);
+    });
+    const channel = client
+      .channel(`web-favorites-${favoriteUserId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "favorites", filter: `user_id=eq.${favoriteUserId}` },
+        () => { void loadFavorites(); },
+      )
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          console.warn("[favorites] synchronisation temps réel indisponible", status);
+        }
+      });
+    return () => {
+      active = false;
+      void client.removeChannel(channel);
+    };
+  }, [favoriteUserId, isAnonymousUser]);
   useEffect(() => {
     const client = supabase;
     if (!client) return;
@@ -618,6 +861,43 @@ function App() {
       }
     }).catch(() => undefined);
   }, []);
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setDeferredInstallPrompt(event as BeforeInstallPromptEvent);
+    };
+    const handleAppInstalled = () => {
+      setDesktopAppInstalled(true);
+      setDeferredInstallPrompt(null);
+      setDesktopInstallOpen(false);
+    };
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    window.addEventListener("appinstalled", handleAppInstalled);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+      window.removeEventListener("appinstalled", handleAppInstalled);
+    };
+  }, []);
+  const isWindowsDesktop = (() => {
+    const platform = (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform
+      || navigator.platform
+      || navigator.userAgent;
+    return /windows/i.test(platform)
+      && window.matchMedia("(min-width: 640px) and (pointer: fine)").matches;
+  })();
+  const installDesktopApp = async () => {
+    setDesktopInstallError("");
+    if (!deferredInstallPrompt) return;
+    const installPrompt = deferredInstallPrompt;
+    setDeferredInstallPrompt(null);
+    try {
+      await installPrompt.prompt();
+      await installPrompt.userChoice;
+    } catch (installError) {
+      console.error("[pwa] impossible d’ouvrir le prompt d’installation", installError);
+      setDesktopInstallError("L’installation n’a pas pu être lancée. Utilisez le menu du navigateur pour installer Mbokamarket.");
+    }
+  };
   const openNativeApp = () => {
     if (nativeAppOpening) return;
     setNativeAppOpening(true);
@@ -646,7 +926,7 @@ function App() {
     setLoading(true);
     const { data, error: loadError } = await supabase
       .from("produits")
-      .select("*")
+      .select("id,title,location,price,original_price,wholesale_price,currency,category_id,images,seller_profile_id,seller_id,status,is_featured,is_promoted,description,stock,condition,specifications,real_estate_type,guarantee_months,created_at")
       .order("is_featured", { ascending: false })
       .order("is_promoted", { ascending: false })
       .order("created_at", { ascending: false });
@@ -655,9 +935,18 @@ function App() {
       const mapped = (data || [])
         .map(mapProduct)
         .filter((item) => item.status !== "sold" && item.status !== "archived");
-      const { data: profiles } = await supabase
-        .from("public_profiles")
-        .select("*");
+      const sellerIds = [...new Set(mapped.map((item) => item.sellerId).filter(Boolean))];
+      const { data: profiles, error: profilesError } = sellerIds.length > 0
+        ? await supabase
+          .from("public_profiles")
+          .select("id,name,username,business_name,account_type,avatar,bio,address,city,phone,show_phone,is_verified,delivery_settings")
+          .in("id", sellerIds)
+        : { data: [], error: null };
+      if (profilesError) {
+        setError(profilesError.message);
+        setLoading(false);
+        return;
+      }
       const profileMap = new Map(
         (profiles || []).map((profile) => [String(profile.id), profile]),
       );
@@ -672,6 +961,7 @@ function App() {
             sellerUsername: profile?.username || item.sellerUsername,
             sellerBio: profile?.bio || item.sellerBio,
             sellerAddress: profile?.address || item.sellerAddress,
+            sellerCity: profile?.city || item.sellerCity,
             phone: profile?.show_phone ? profile?.phone || "" : "",
             verified: Boolean(profile?.is_verified || item.verified),
             sellerAccountType: profile?.account_type || item.sellerAccountType,
@@ -688,7 +978,7 @@ function App() {
     try {
       const { data, error: loadError } = await supabase
         .from("notifications")
-        .select("id,title,message,read,created_at")
+        .select("id,title,message,read,created_at,type,related_id,related_type,event_id")
         .eq("user_id", currentUser.id)
         .order("created_at", { ascending: false })
         .limit(30);
@@ -705,8 +995,12 @@ function App() {
             message: item.message || "",
             read: item.read === true,
             createdAt: item.created_at,
+            type: item.type,
+            relatedId: item.related_id,
+            relatedType: item.related_type,
+            eventId: item.event_id,
           }))
-          .filter((item) => !isSentMessageNotification(item)),
+          .filter((item) => !isMessageNotification(item)),
       );
     } catch (loadError) {
       console.error("[notifications] actualisation impossible", loadError);
@@ -743,6 +1037,52 @@ function App() {
   }, [loadNotices, user]);
   useEffect(() => {
     const client = supabase;
+    if (!client || !user || user.isAnonymous) {
+      setUnreadMessageCount(0);
+      return;
+    }
+    let active = true;
+    const refreshUnreadMessages = async () => {
+      const { count, error: countError } = await client
+        .from("messages")
+        .select("id", { count: "exact", head: true })
+        .eq("recipient_id", user.id)
+        .eq("read", false);
+      if (!active) return;
+      if (countError) {
+        console.error("[messages] compteur de messages non lus indisponible", countError);
+        setError(countError.message);
+        return;
+      }
+      setUnreadMessageCount(count ?? 0);
+    };
+    const refreshOnFocus = () => {
+      if (document.visibilityState === "visible") void refreshUnreadMessages();
+    };
+    void refreshUnreadMessages();
+    window.addEventListener("focus", refreshOnFocus);
+    document.addEventListener("visibilitychange", refreshOnFocus);
+    const channel = client
+      .channel(`web-unread-messages-${user.id}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "messages", filter: `recipient_id=eq.${user.id}` },
+        () => { void refreshUnreadMessages(); },
+      )
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          console.warn("[messages] synchronisation du compteur indisponible", status);
+        }
+      });
+    return () => {
+      active = false;
+      window.removeEventListener("focus", refreshOnFocus);
+      document.removeEventListener("visibilitychange", refreshOnFocus);
+      void client.removeChannel(channel);
+    };
+  }, [user]);
+  useEffect(() => {
+    const client = supabase;
     if (!client) return;
     const showPendingAuthSuccess = () => {
       const pendingType = localStorage.getItem("mbokamaket-auth-success-pending");
@@ -764,6 +1104,21 @@ function App() {
       showPendingAuthSuccess();
       const { data: profile, error: profileError } = await client.from("public_profiles").select("*").eq("id", sessionUser.id).maybeSingle();
       if (profileError) console.warn("[OAuth] Profil indisponible, session conservee", profileError);
+      let membership: { business_id: string; role: "seller" | "delivery" | "manager" } | null = null;
+      try {
+        const { data: membershipData, error: membershipError } = await client
+          .from("business_memberships")
+          .select("business_id,role")
+          .eq("member_id", sessionUser.id)
+          .eq("status", "active")
+          .order("created_at", { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        if (membershipError) throw membershipError;
+        membership = membershipData ?? null;
+      } catch (membershipError) {
+        console.warn("[OAuth] Rôle d’entreprise indisponible", membershipError);
+      }
       const fullName = getProfileDisplayName({
         ...profile,
         name: profile?.name || sessionUser.user_metadata?.name,
@@ -772,6 +1127,8 @@ function App() {
         account_type: profile?.account_type || sessionUser.user_metadata?.account_type,
         username: sessionUser.user_metadata?.username || sessionUser.user_metadata?.user_name,
       }) || (sessionUser.email ? sessionUser.email.split("@")[0] : "");
+      const businessOwnerId = membership?.business_id ?? ((profile?.account_type === "boutique_pro" || profile?.account_type === "magasin_pro") ? sessionUser.id : undefined);
+      const businessRole = membership?.role ?? ((profile?.account_type === "boutique_pro" || profile?.account_type === "magasin_pro") ? "seller" : undefined);
       const current = {
         id: sessionUser.id,
         email: sessionUser.email,
@@ -781,6 +1138,8 @@ function App() {
         username: sessionUser.user_metadata?.username || sessionUser.user_metadata?.user_name,
         role: profile?.role || sessionUser.user_metadata?.role,
         accountType: profile?.account_type || sessionUser.user_metadata?.account_type,
+        businessOwnerId,
+        businessRole,
         avatar: profile?.avatar || sessionUser.user_metadata?.avatar_url || sessionUser.user_metadata?.picture || "",
         isVerified: Boolean(profile?.is_verified),
         phone: profile?.phone || sessionUser.user_metadata?.phone || "",
@@ -894,22 +1253,34 @@ function App() {
   }, [mobileOpen]);
   const filteredProducts = useMemo(
     () => showProducts ? products.filter((item) => {
-        const text = `${item.title} ${item.category} ${item.location} ${item.seller} ${item.sellerUsername}`.toLowerCase();
+        const text = normalizeSearchText(`${item.title} ${item.category} ${item.location} ${item.seller} ${item.sellerUsername}`);
+        const cityMatches = !cityFilter || getProductCity(item) === normalizeSearchCity(cityFilter);
+        const itemCurrency = item.currency === "$" || item.currency.toUpperCase() === "USD" ? "USD" : "FC";
+        const hasPriceLimit = minPriceFilter !== "" || maxPriceFilter !== "";
+        const priceCurrencyMatches = currencyFilter === "Toutes" || itemCurrency === currencyFilter;
+        const priceMatches = !hasPriceLimit || currencyFilter === "Toutes" || (
+          priceCurrencyMatches
+          && (minPriceFilter === "" || item.price >= Number(minPriceFilter))
+          && (maxPriceFilter === "" || item.price <= Number(maxPriceFilter))
+        );
         return (
-          text.includes(query.toLowerCase()) &&
+          text.includes(normalizeSearchText(query)) &&
           (!sellerFilter || item.sellerId === sellerFilter.id) &&
-          (category === "Toutes" || item.categoryId === category)
+          (category === "Toutes" || item.categoryId === category) &&
+          cityMatches &&
+          priceCurrencyMatches &&
+          priceMatches &&
+          (!conditionFilter || item.condition === conditionFilter)
         );
       }) : [],
-    [products, query, category, sellerFilter, showProducts],
+    [products, query, category, sellerFilter, showProducts, cityFilter, minPriceFilter, maxPriceFilter, currencyFilter, conditionFilter],
   );
   const sortedProducts = useMemo(() => {
-    const normalizedQuery = query.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().trim();
+    const normalizedQuery = normalizeSearchText(query);
     const searchTerms = normalizedQuery.split(/\s+/).filter(Boolean);
     const relevanceScore = (product: Product) => {
-      const title = product.title.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
-      const searchableText = `${title} ${product.category} ${product.location} ${product.seller} ${product.sellerUsername}`
-        .normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+      const title = normalizeSearchText(product.title);
+      const searchableText = normalizeSearchText(`${title} ${product.category} ${product.location} ${product.seller} ${product.sellerUsername}`);
       return searchTerms.reduce((score, term) => {
         if (title === term) return score + 8;
         if (title.startsWith(term)) return score + 5;
@@ -963,8 +1334,8 @@ function App() {
   useEffect(() => {
     setProductPage(1);
     setMobileProductLimit(12);
-  }, [query, category, sellerFilter, productSort]);
-  const visibleNotices = notices.filter((item) => !isSentMessageNotification(item));
+  }, [query, category, sellerFilter, productSort, cityFilter, minPriceFilter, maxPriceFilter, currencyFilter, conditionFilter]);
+  const visibleNotices = notices.filter((item) => !isMessageNotification(item));
   const unreadNoticeCount = visibleNotices.filter((item) => item.read === false).length;
   const cartItemCount = cartItems.reduce((count, item) => count + item.quantity, 0);
   const openNotice = async (notice: Notice) => {
@@ -988,12 +1359,37 @@ function App() {
       }
       setNotices((current) => current.map((item) => item.id === notice.id ? { ...item, read: true } : item));
     }
+    const productAlertTypes = new Set(["SAVED_SEARCH_MATCH", "FAVORITE_PRICE_DROP", "FAVORITE_BACK_IN_STOCK"]);
+    if (
+      productAlertTypes.has(notice.type?.toUpperCase() || "")
+      && notice.relatedType?.toLowerCase() === "publication"
+      && notice.relatedId
+    ) {
+      const matchingProduct = products.find((product) => product.id === notice.relatedId);
+      if (matchingProduct) {
+        setNoticeOpen(false);
+        setSelectedNotice(null);
+        openProduct(matchingProduct);
+        return;
+      }
+    }
     setSelectedNotice({ ...notice, read: true });
   };
   const availableCategories = useMemo(
     () => categories.filter((item) =>
       products.some((product) => product.categoryId === item.id),
     ),
+    [products],
+  );
+  const availableCities = useMemo(
+    () => [...new Set(products.map(getProductCity).filter(Boolean))]
+      .map(searchCityLabel)
+      .sort((first, second) => first.localeCompare(second, "fr")),
+    [products],
+  );
+  const availableConditions = useMemo(
+    () => [...new Set(products.map((product) => product.condition?.trim()).filter((condition): condition is string => Boolean(condition)))]
+      .sort((first, second) => first.localeCompare(second, "fr")),
     [products],
   );
   const homeProducts = useMemo(() => [...products].sort((first, second) => {
@@ -1047,7 +1443,10 @@ function App() {
     return () => window.clearInterval(timer);
   }, [advertisedProducts.length, heroPaused, isMobileViewport]);
   const openProducts = () => {
+    setFavoritesOpen(false);
+    setConnectionsOpen(false);
     setSellerFilter(null);
+    setSellerDashboardOpen(false);
     setPublishOpen(false);
     setManageProductsOpen(false);
     setStockManagementOpen(false);
@@ -1061,6 +1460,7 @@ function App() {
   const openDownload = () => {
     setMobileOpen(false);
     setProfileOpen(false);
+    setSellerDashboardOpen(false);
     setPublishOpen(false);
     setManageProductsOpen(false);
     setStockManagementOpen(false);
@@ -1073,6 +1473,7 @@ function App() {
     window.scrollTo({ top: 0 });
   };
   const returnToAllProducts = () => {
+    setSellerDashboardOpen(false);
     setSelectedProduct(null);
     setSellerFilter(null);
     setQuery("");
@@ -1104,17 +1505,78 @@ function App() {
   };
   const openSellerOrders = () => {
     setProfileOpen(false);
+    setSellerDashboardOpen(false);
+    setBusinessSpaceOpen(false);
+    setBusinessOrdersOpen(false);
     setSellerOrdersOpen(true);
   };
-  const addToCart = (product: Product, variants: ProductVariant[] = [{ selectedSpecifications: {}, quantity: 1 }]) => {
+  const openBusinessOrders = () => {
+    setProfileOpen(false);
+    setSellerDashboardOpen(false);
+    setBusinessSpaceOpen(false);
+    setSellerOrdersOpen(false);
+    setBusinessOrdersOpen(true);
+  };
+  const openBusinessSpace = () => {
+    setProfileOpen(false);
+    setMobileOpen(false);
+    setCommerceMode(null);
+    setMessagesOpen(false);
+    setSellerOrdersOpen(false);
+    setBusinessOrdersOpen(false);
+    const openStoreDashboard = user?.accountType === "magasin_pro";
+    setBusinessSpaceOpen(!openStoreDashboard);
+    setSellerDashboardOpen(openStoreDashboard);
+    window.location.hash = openStoreDashboard ? "tableau-de-bord" : "espace-pro";
+  };
+  const openSellerDashboard = () => {
+    setProfileOpen(false);
+    setMobileOpen(false);
+    setCommerceMode(null);
+    setMessagesOpen(false);
+    setBusinessSpaceOpen(false);
+    setSellerOrdersOpen(false);
+    setBusinessOrdersOpen(false);
+    setSellerDashboardOpen(true);
+    window.location.hash = "tableau-de-bord";
+  };
+  const openDeliverySettings = () => {
+    setDeliverySettingsOpen(true);
+  };
+  const openMessages = (target?: { id: string; name: string; productId: string; productTitle: string }) => {
+    setProfileOpen(false);
+    setMobileOpen(false);
+    setCommerceMode(null);
+    setSellerOrdersOpen(false);
+    setBusinessOrdersOpen(false);
+    setMessagesTarget(target ?? null);
+    setMessagesOpen(true);
+  };
+  const messageProductSeller = (product: Product) => {
+    if (!user || user.isAnonymous) {
+      openAuth();
+      return;
+    }
+    if (user.id === product.sellerId) {
+      setError("Vous ne pouvez pas vous envoyer un message à vous-même.");
+      return;
+    }
+    openMessages({
+      id: product.sellerId,
+      name: product.seller,
+      productId: product.id,
+      productTitle: product.title,
+    });
+  };
+  const addToCart = (product: Product, variants: ProductVariant[] = [{ selectedSpecifications: {}, quantity: 1 }]): boolean => {
     if (!product.sellerId || product.status !== "active") {
       setError("Cette annonce n’est pas disponible pour une commande.");
-      return;
+      return false;
     }
     if (getSelectableSpecifications(product.specifications).length
       && variants.some((variant) => !Object.keys(variant.selectedSpecifications).length)) {
       setError("Choisissez les options disponibles depuis la fiche du produit.");
-      return;
+      return false;
     }
     const requestedQuantity = variants.reduce((total, variant) => total + variant.quantity, 0);
     const quantityInCart = cartItems
@@ -1122,12 +1584,13 @@ function App() {
       .reduce((total, item) => total + item.quantity, 0);
     if (!product.realEstateType && requestedQuantity > Math.max(0, product.stock - quantityInCart)) {
       setError(`Stock insuffisant. Il reste ${Math.max(0, product.stock - quantityInCart)} unité(s) disponible(s).`);
-      return;
+      return false;
     }
     const commerceProduct: CommerceProduct = {
       id: product.id,
       title: product.title,
       price: product.price,
+      wholesalePrice: product.wholesalePrice,
       currency: product.currency === "$" || product.currency.toUpperCase() === "USD" ? "USD" : "FC",
       image: product.image,
       sellerId: product.sellerId,
@@ -1164,10 +1627,22 @@ function App() {
     setError("");
     setCartNotice(requestedQuantity > 1 ? "Variantes ajoutées au panier." : "Produit ajouté au panier.");
     window.setTimeout(() => setCartNotice(""), 2600);
+    return true;
+  };
+  const startProductOrder = (product: Product) => {
+    if (getSelectableSpecifications(product.specifications).length) {
+      openProduct(product);
+      return;
+    }
+    if (addToCart(product)) openCart();
   };
   const goHome = () => {
+    setFavoritesOpen(false);
+    setConnectionsOpen(false);
     setSellerFilter(null);
     setSelectedProduct(null);
+    setBusinessSpaceOpen(false);
+    setSellerDashboardOpen(false);
     setPublishOpen(false);
     setManageProductsOpen(false);
     setStockManagementOpen(false);
@@ -1180,6 +1655,7 @@ function App() {
   };
   const openNotifications = () => {
     setPublishOpen(false);
+    setSellerDashboardOpen(false);
     setManageProductsOpen(false);
     setProfileManagementOpen(false);
     setShowProducts(false);
@@ -1197,14 +1673,44 @@ function App() {
     setProfileOpen(false);
     window.location.hash = authMode === "login" ? "connexion" : "inscription";
   };
+  const openFavorites = () => {
+    if (!user || user.isAnonymous) {
+      openAuth();
+      return;
+    }
+    setProfileOpen(false);
+    setMobileOpen(false);
+    setCommerceMode(null);
+    setMessagesOpen(false);
+    goHome();
+    setFavoritesOpen(true);
+    window.location.hash = "favoris";
+  };
+  const openConnections = () => {
+    if (!user || user.isAnonymous) {
+      openAuth();
+      return;
+    }
+    setProfileOpen(false);
+    setMobileOpen(false);
+    setCommerceMode(null);
+    setMessagesOpen(false);
+    goHome();
+    setConnectionsOpen(true);
+    window.location.hash = "abonnements";
+  };
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash;
-      setShowProducts(hash === "#produits");
+      const isCatalogPath = Boolean(categoryRouteIds[location.pathname])
+        || ["/annonces", "/services", "/emploi", "/boutiques"].includes(location.pathname);
+      setShowProducts(hash === "#produits" || (isCatalogPath && (!hash || hash === "#accueil")));
       setNoticeOpen(hash === "#notifications");
       setPublishOpen(hash === "#publier");
       setManageProductsOpen(hash === "#mes-produits");
       setStockManagementOpen(hash === "#gestion-stock");
+      setBusinessSpaceOpen(hash === "#espace-pro");
+      setSellerDashboardOpen(hash === "#tableau-de-bord");
       setProfileManagementOpen(hash === "#mon-profil");
       setLegalPage(hash === "#conditions" ? "conditions" : hash === "#confidentialite" ? "confidentialite" : null);
       if (hash === "#telechargement" && location.pathname !== "/telechargement") {
@@ -1278,6 +1784,8 @@ function App() {
 
   const openManageProducts = () => {
     setProfileOpen(false);
+    setSellerDashboardOpen(false);
+    setBusinessSpaceOpen(false);
     setStockManagementOpen(false);
     setProfileManagementOpen(false);
     setSelectedProduct(null);
@@ -1289,6 +1797,8 @@ function App() {
   };
   const openStockManagement = () => {
     setProfileOpen(false);
+    setSellerDashboardOpen(false);
+    setBusinessSpaceOpen(false);
     setProfileManagementOpen(false);
     setManageProductsOpen(false);
     setSelectedProduct(null);
@@ -1300,6 +1810,7 @@ function App() {
   };
   const openProfileManagement = () => {
     setProfileOpen(false);
+    setSellerDashboardOpen(false);
     setStockManagementOpen(false);
     setSelectedProduct(null);
     setShowProducts(false);
@@ -1375,7 +1886,32 @@ function App() {
   return (
     <div className="min-h-screen bg-[#f6f8fc] text-slate-900">
       <Seo {...(seo || currentPageSeo)} />
-      {installOpen && (
+    {desktopInstallOpen && isWindowsDesktop && !desktopAppInstalled && (
+      <aside className="fixed bottom-3 right-6 z-[90] w-[min(24rem,calc(100vw-1.5rem))] rounded-2xl border border-blue-100 bg-white p-4 shadow-2xl shadow-[#143ca8]/20" aria-label="Installation de Mbokamarket pour Windows">
+        <div className="flex items-start gap-3">
+          <img src={appIcon} alt="" className="size-12 rounded-xl object-contain" />
+          <div className="min-w-0 flex-1">
+            <h2 className="font-bold text-slate-900">Installer Mbokamarket sur Windows</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Ajoutez Mbokamarket à votre bureau et ouvrez-le dans sa propre fenêtre.
+            </p>
+          </div>
+          <button type="button" onClick={() => setDesktopInstallOpen(false)} className="btn btn-ghost btn-circle btn-sm" aria-label="Fermer">×</button>
+        </div>
+        {deferredInstallPrompt ? (
+          <button type="button" onClick={() => void installDesktopApp()} className="btn mt-3 w-full rounded-xl bg-[#143ca8] text-white">
+            Installer l’application
+          </button>
+        ) : (
+          <div className="mt-3 rounded-xl bg-blue-50 p-3 text-sm leading-5 text-slate-700">
+            Dans Microsoft Edge, ouvrez le menu <strong>…</strong>, puis <strong>Applications → Installer ce site en tant qu’application</strong>.
+            Dans Google Chrome, ouvrez le menu <strong>⋮</strong>, puis <strong>Enregistrer et partager → Installer la page comme application</strong>.
+          </div>
+        )}
+        {desktopInstallError && <p role="alert" className="mt-2 text-sm text-red-600">{desktopInstallError}</p>}
+      </aside>
+    )}
+    {installOpen && (
         <aside className="fixed inset-x-3 bottom-3 z-[90] rounded-2xl border border-blue-100 bg-white p-4 shadow-2xl shadow-[#143ca8]/20 sm:inset-x-auto sm:right-6 sm:w-96" aria-label="Installation de Mbokamarket RDC">
           <div className="flex items-start gap-3">
             <img src={appIcon} alt="" className="size-12 rounded-xl object-contain" />
@@ -1415,7 +1951,7 @@ function App() {
         </main>
       )}
       <header className={profileManagementOpen ? "hidden" : "sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur"}>
-        <div className="mx-auto flex max-w-7xl items-center gap-4 px-4 py-3 sm:px-6">
+        <div className="mx-auto flex max-w-7xl items-center gap-2 px-3 py-3 sm:gap-4 sm:px-6">
           <button
             className="btn btn-ghost btn-square md:hidden"
             onClick={() => setMobileOpen(!mobileOpen)}
@@ -1423,18 +1959,18 @@ function App() {
           >
             <Menu size={20} />
           </button>
-          <a href="#accueil" onClick={goHome} className="flex shrink-0 items-center gap-2">
+          <a href="#accueil" onClick={goHome} className="flex min-w-0 flex-1 items-center gap-2 md:flex-initial">
             <img src={appIcon} alt="" className="size-6 object-contain sm:size-10" />
-            <span>
-              <strong className="block font-display text-base font-extrabold leading-none text-[#1677ff] sm:text-lg">
+            <span className="min-w-0">
+              <strong className="block truncate font-display text-sm font-extrabold leading-none text-[#1677ff] sm:text-lg">
                 Mbokamarket RDC
               </strong>
               <small className="hidden text-[10px] uppercase tracking-widest text-slate-400 sm:block">
-                Le marché près de vous
+                Somba teka na mboka nayo
               </small>
             </span>
           </a>
-          <div className="ml-auto flex items-center gap-1 md:hidden">
+          <div className="ml-auto flex shrink-0 items-center gap-0 md:hidden">
             {user?.isVerified && (
               <button
                 onClick={() => { setMobileOpen(false); setPublishOpen(true); window.location.hash = "publier"; }}
@@ -1460,6 +1996,18 @@ function App() {
               {unreadNoticeCount > 0 && (
                 <span className="badge badge-error badge-xs absolute right-0 top-0 min-w-4 px-1 text-[10px] text-white">
                   {unreadNoticeCount > 99 ? "99+" : unreadNoticeCount}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => { setMobileOpen(false); openMessages(); }}
+              className="btn btn-ghost btn-square relative"
+              aria-label={`Messagerie${unreadMessageCount ? `, ${unreadMessageCount} message(s) non lu(s)` : ""}`}
+            >
+              <MessageCircle size={20} />
+              {unreadMessageCount > 0 && (
+                <span className="badge badge-error badge-xs absolute right-0 top-0 min-w-4 px-1 text-[10px] text-white">
+                  {unreadMessageCount > 99 ? "99+" : unreadMessageCount}
                 </span>
               )}
             </button>
@@ -1517,6 +2065,18 @@ function App() {
               <ClipboardList size={20} />
             </button>
             <button
+              onClick={() => openMessages()}
+              className="btn btn-ghost btn-square relative"
+              aria-label={`Messagerie${unreadMessageCount ? `, ${unreadMessageCount} message(s) non lu(s)` : ""}`}
+            >
+              <MessageCircle size={20} />
+              {unreadMessageCount > 0 && (
+                <span className="badge badge-error badge-xs absolute right-0 top-0 min-w-4 px-1 text-[10px] text-white">
+                  {unreadMessageCount > 99 ? "99+" : unreadMessageCount}
+                </span>
+              )}
+            </button>
+            <button
               onClick={openNotifications}
               className="btn btn-ghost btn-square relative"
               aria-label="Notifications"
@@ -1537,9 +2097,23 @@ function App() {
             >
               <UserRound size={20} />
             </button>
-            <a href="/telechargement" onClick={(event) => { event.preventDefault(); openDownload(); }} className="btn btn-primary ml-1 whitespace-nowrap rounded-xl bg-[#143ca8]">
-              Télécharger l’application
-            </a>
+            {isWindowsDesktop && !desktopAppInstalled ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setDesktopInstallError("");
+                  setDesktopInstallOpen(true);
+                }}
+                className="btn btn-primary ml-1 whitespace-nowrap rounded-xl bg-[#143ca8]"
+              >
+                <Laptop size={17} />
+                Installer sur Windows
+              </button>
+            ) : (
+              <a href="/telechargement" onClick={(event) => { event.preventDefault(); openDownload(); }} className="btn btn-primary ml-1 whitespace-nowrap rounded-xl bg-[#143ca8]">
+                Télécharger l’application
+              </a>
+            )}
           </nav>
         </div>
         {mobileOpen && (
@@ -1634,7 +2208,7 @@ function App() {
                 ))}
               </div>
             )}
-            {(!user || !user.isAnonymous) && <button
+            {user?.accountType === "personal" && !user.isAnonymous && <button
               type="button"
               onClick={() => {
                 setMobileOpen(false);
@@ -1645,12 +2219,42 @@ function App() {
             >
               Voir mes produits
             </button>}
+            {user && hasBusinessWorkspace && (
+              <button
+                type="button"
+                onClick={openBusinessSpace}
+                className="btn btn-ghost btn-sm min-h-9 h-9 w-full justify-start font-semibold text-[#143ca8]"
+              >
+                <Store size={17} />
+                {getBusinessSpaceTitle(user.accountType, Boolean(user.businessOwnerId))}
+              </button>
+            )}
+            {user?.role === "seller"
+              && !(["boutique_pro", "magasin_pro"].includes(user.accountType || "") && hasBusinessWorkspace) && (
+              <button
+                type="button"
+                onClick={openSellerDashboard}
+                className="btn btn-ghost btn-sm min-h-9 h-9 w-full justify-start font-semibold text-[#143ca8]"
+              >
+                <BarChart3 size={17} /> Tableau de bord vendeur
+              </button>
+            )}
             <button type="button" onClick={openCart} className="btn btn-ghost btn-sm min-h-9 h-9 w-full justify-start">
               <ShoppingCart size={17} /> Mon panier {cartItemCount > 0 ? `(${cartItemCount})` : ""}
             </button>
             <button type="button" onClick={openOrders} className="btn btn-ghost btn-sm min-h-9 h-9 w-full justify-start">
               <ClipboardList size={17} /> Mes commandes
             </button>
+            {user && !user.isAnonymous && (
+              <>
+                <button type="button" onClick={openFavorites} className="btn btn-ghost btn-sm min-h-9 h-9 w-full justify-start">
+                  <Heart size={17} /> Mes favoris
+                </button>
+                <button type="button" onClick={openConnections} className="btn btn-ghost btn-sm min-h-9 h-9 w-full justify-start">
+                  <UserRound size={17} /> Mes abonnés et abonnements
+                </button>
+              </>
+            )}
             <a
               href="/telechargement"
               onClick={(event) => { event.preventDefault(); openDownload(); }}
@@ -1729,7 +2333,9 @@ function App() {
             product={selectedProduct}
             isFavorite={favoriteIds.includes(selectedProduct.id)}
             onToggleFavorite={() => toggleFavorite(selectedProduct.id)}
-            onAddToCart={(variants) => addToCart(selectedProduct, variants)}
+            onAddToCart={(variants) => {
+              if (addToCart(selectedProduct, variants)) openCart();
+            }}
             onClose={returnToAllProducts}
             sellerProducts={products.filter((item) => item.sellerId === selectedProduct.sellerId && item.id !== selectedProduct.id)}
             similarProducts={products.filter((item) =>
@@ -1742,8 +2348,37 @@ function App() {
             )}
             onSelectSellerProduct={openProduct}
             onLogin={() => openAuth()}
+            onMessageSeller={() => messageProductSeller(selectedProduct)}
             onDownload={() => {
               openDownload();
+            }}
+          />
+        )}
+        {favoritesOpen && user && (
+          <FavoritesPage
+            products={products.filter((product) => favoriteIds.includes(product.id))}
+            loading={favoritesLoading}
+            onClose={goHome}
+            onOpenProduct={(product) => {
+              setFavoritesOpen(false);
+              openProduct(product);
+            }}
+            onToggleFavorite={(productId) => { void toggleFavorite(productId); }}
+          />
+        )}
+        {connectionsOpen && user && !user.isAnonymous && (
+          <AccountConnectionsPage
+            key={user.id}
+            userId={user.id}
+            onClose={goHome}
+            onViewListings={(id, name) => {
+              setConnectionsOpen(false);
+              setSellerFilter({ id, name });
+              setQuery("");
+              setCategory("Toutes");
+              setShowProducts(true);
+              navigate("/annonces");
+              window.location.hash = "produits";
             }}
           />
         )}
@@ -1820,6 +2455,55 @@ function App() {
             </section>
           </div>
         )}
+        {!downloadPage && !showProducts && !noticeOpen && !selectedProduct && !publishOpen && !manageProductsOpen && !profileManagementOpen && (
+          <div className="mb-3 sm:hidden">
+            <button
+              type="button"
+              onClick={() => { setMobileSearchOpen(true); openProducts(); }}
+              className="btn min-h-11 w-full justify-between rounded-xl border border-blue-100 bg-white px-4 text-left font-medium text-slate-500 shadow-sm"
+            >
+              <span>Que recherchez-vous ?</span>
+              <Search size={18} className="text-[#143ca8]" />
+            </button>
+          </div>
+        )}
+        {!downloadPage && !showProducts && !noticeOpen && !selectedProduct && !publishOpen && !manageProductsOpen && !profileManagementOpen && (
+          <nav className="mb-3 rounded-2xl border border-slate-200 bg-white p-3 sm:mb-5 sm:p-4" aria-label="Accès rapide aux rubriques">
+            <div className="mb-2 flex items-center justify-between gap-2 sm:mb-3">
+              <h2 className="text-sm font-bold text-slate-800">Accès rapide</h2>
+              <span className="text-[10px] font-medium text-slate-400 sm:hidden">Explorer par rubrique</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setCategory("Toutes");
+                  setSellerFilter(null);
+                  setShowProducts(true);
+                  window.location.hash = "produits";
+                }}
+                className="btn btn-sm min-h-9 rounded-full border-blue-100 bg-blue-50 px-4 text-[#143ca8] hover:border-blue-200 hover:bg-blue-100"
+              >
+                Toutes les annonces
+              </button>
+              {availableCategories.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => {
+                    setCategory(item.id);
+                    setSellerFilter(null);
+                    setShowProducts(true);
+                    window.location.hash = "produits";
+                  }}
+                  className="btn btn-sm min-h-9 rounded-full border-blue-100 bg-blue-50 px-4 text-[#143ca8] hover:border-blue-200 hover:bg-blue-100"
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </nav>
+        )}
         <section className={`${downloadPage || showProducts || noticeOpen || selectedProduct || publishOpen ? "hidden" : ""} hero-panel relative isolate mt-4 overflow-hidden rounded-[2rem] bg-[#143ca8] text-white shadow-2xl shadow-[#143ca8]/15 sm:mt-6`}>
           <div
             className="hero-ad-panel relative flex min-h-[18rem] cursor-pointer flex-col justify-between overflow-hidden bg-[#f5f8ff] p-3 text-slate-900 sm:min-h-[30rem] sm:p-8 lg:min-h-[19rem] lg:p-5"
@@ -1846,7 +2530,7 @@ function App() {
                     {desktopHeroProducts.map((product) => (
                       <button key={product.id} type="button" onClick={(event) => { event.stopPropagation(); openProduct(product); }} className="group flex min-w-0 flex-col overflow-hidden rounded-xl bg-white text-left shadow-md transition hover:-translate-y-1 hover:shadow-lg" aria-label={`Voir le produit ${product.title}`}>
                         <div className="relative aspect-[16/9] bg-slate-100">
-                          {product.image ? <img src={product.image} alt={product.title} loading="lazy" decoding="async" className="h-full w-full object-cover transition duration-500 group-hover:scale-105" /> : <div className="grid h-full place-items-center text-xs text-slate-400">Pas d’image</div>}
+                          {product.image ? <img src={product.image} alt={product.title} loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover transition duration-500 group-hover:scale-105" /> : <div className="absolute inset-0 grid place-items-center text-xs text-slate-400">Pas d’image</div>}
                           {(product.featured || product.promoted) && <span className="badge absolute left-2 top-2 border-0 bg-orange-400 text-[10px] text-white">Sponsorisé</span>}
                         </div>
                         <div className="min-w-0 p-3">
@@ -1874,7 +2558,7 @@ function App() {
                     aria-label={`Voir le produit ${heroProduct.title}`}
                   >
                     <div className="relative aspect-[16/5] flex-none bg-slate-100 sm:aspect-[16/7]">
-                      {heroProduct.image ? <img src={heroProduct.image} alt={heroProduct.title} loading="lazy" decoding="async" className="h-full w-full object-cover transition duration-500 group-hover:scale-105" /> : <div className="grid h-full place-items-center text-slate-400">Pas d’image</div>}
+                      {heroProduct.image ? <img src={heroProduct.image} alt={heroProduct.title} loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover transition duration-500 group-hover:scale-105" /> : <div className="absolute inset-0 grid place-items-center text-slate-400">Pas d’image</div>}
                       {(heroProduct.featured || heroProduct.promoted) && <span className="badge absolute left-3 top-3 border-0 bg-orange-400 text-white">Annonce sponsorisée</span>}
                     </div>
                     <div className="p-3 sm:p-4">
@@ -1925,9 +2609,9 @@ function App() {
                   >
                     <div className="relative aspect-[16/9] bg-slate-100 sm:aspect-[4/3]">
                       {item.image ? (
-                        <img src={item.image} alt={item.title} loading="lazy" decoding="async" className="h-full w-full object-cover" />
+                        <img src={item.image} alt={item.title} loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover" />
                       ) : (
-                        <div className="grid h-full place-items-center text-slate-400">Pas d’image</div>
+                        <div className="absolute inset-0 grid place-items-center text-slate-400">Pas d’image</div>
                       )}
                       {item.originalPrice !== null && item.originalPrice > item.price && (
                         <span className="badge badge-xs absolute left-1.5 top-1.5 border-0 bg-orange-500 px-1.5 text-[9px] font-bold text-white shadow-sm sm:left-3 sm:top-3 sm:badge-sm sm:px-2">
@@ -1945,34 +2629,59 @@ function App() {
                       </button>
                     </div>
                     <div className="flex min-w-0 flex-1 flex-col p-2 sm:p-4">
-                      <div className="flex min-w-0 items-start gap-1">
-                        <h3 className="line-clamp-2 min-h-9 min-w-0 flex-1 text-xs font-bold leading-4 sm:min-h-0 sm:text-base sm:leading-normal">{item.title}</h3>
-                        {item.verified && (
-                          <span className="badge badge-xs shrink-0 gap-0.5 border-0 bg-[#1877f2] px-1 text-white sm:badge-sm sm:gap-1 sm:px-2">
-                            <ShieldCheck size={11} className="sm:hidden" />
-                            <ShieldCheck size={13} className="hidden sm:block" />
-                            <span className="hidden sm:inline">Vérifié</span>
-                          </span>
-                        )}
-                      </div>
+                      <h3 className="line-clamp-2 min-h-9 min-w-0 text-xs font-bold leading-4 sm:min-h-0 sm:text-base sm:leading-normal">{item.title}</h3>
                       <PriceDisplay product={item} compact dense />
+                      <ProductAvailability product={item} compact />
                       <p className="mt-1 flex min-w-0 items-center gap-1 truncate text-[10px] leading-4 text-slate-500 sm:text-xs">
                         <MapPin size={12} className="shrink-0 sm:size-[13px]" />
                         <span className="truncate">{item.location}</span>
                       </p>
+                      <div className="mt-2 flex min-w-0 items-center gap-1.5 text-[10px] font-semibold leading-4 text-slate-400 sm:gap-2 sm:text-xs">
+                        {item.sellerAvatar ? (
+                          <img src={item.sellerAvatar} alt={`Profil de ${item.seller}`} loading="lazy" decoding="async" className="size-5 shrink-0 rounded-full object-cover sm:size-7" />
+                        ) : (
+                          <span className="grid size-5 shrink-0 place-items-center rounded-full bg-[#edf3ff] text-[#143ca8] sm:size-7"><UserRound size={12} className="sm:hidden" /><UserRound size={14} className="hidden sm:block" /></span>
+                        )}
+                        <span className="flex min-w-0 flex-1 items-center gap-1">
+                          <span className="truncate">{item.seller}</span>
+                          {item.verified && (
+                            <span
+                              className="grid size-[18px] shrink-0 place-items-center rounded-full bg-[#0ea5e9] text-white"
+                              role="img"
+                              aria-label="Vendeur certifié"
+                              title="Vendeur certifié"
+                            >
+                              <BadgeCheck size={12} />
+                            </span>
+                          )}
+                          {item.sellerAccountType && item.sellerAccountType !== "personal" && getAccountTypeLabel(item.sellerAccountType) && (
+                            <span
+                              className={`inline-flex shrink-0 items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[8px] font-bold leading-none sm:text-[9px] ${
+                                item.sellerAccountType === "boutique_pro" || item.sellerAccountType === "magasin_pro"
+                                  ? "border-[#d4af37] bg-[#fff4cc] text-[#8a5a00]"
+                                  : "border-blue-100 bg-blue-50 text-[#143ca8]"
+                              }`}
+                              aria-label={`Type de compte : ${getAccountTypeLabel(item.sellerAccountType)}`}
+                              title={getAccountTypeLabel(item.sellerAccountType)}
+                            >
+                              {item.sellerAccountType.includes("magasin") ? <Warehouse size={10} /> : item.sellerAccountType === "agence_immo" ? <Home size={10} /> : <Store size={10} />}
+                              {getAccountTypeLabel(item.sellerAccountType)}
+                            </span>
+                          )}
+                        </span>
+                      </div>
                       {item.status === "active" && item.sellerId !== user?.id && (
                         <button
                           type="button"
                           onClick={(event) => {
                             event.stopPropagation();
-                            if (getSelectableSpecifications(item.specifications).length) openProduct(item);
-                            else addToCart(item);
+                            startProductOrder(item);
                           }}
-                          className="btn btn-sm mt-auto min-h-8 h-8 w-full gap-1 border-[#143ca8] bg-[#143ca8] px-1 text-[10px] text-white hover:bg-[#102f85] sm:btn-md sm:mt-3 sm:min-h-12 sm:h-auto sm:gap-2 sm:px-4 sm:text-sm"
+                          disabled={!item.realEstateType && item.stock <= 0}
+                          className="btn btn-sm mt-auto min-h-8 h-8 w-full gap-1 border-[#143ca8] bg-[#143ca8] px-1 text-[10px] text-white hover:bg-[#102f85] disabled:border-slate-300 disabled:bg-slate-300 sm:btn-md sm:mt-3 sm:min-h-12 sm:h-auto sm:gap-2 sm:px-4 sm:text-sm"
                         >
                           <ShoppingCart size={13} className="shrink-0 sm:size-4" />
-                          <span className="sm:hidden">Panier</span>
-                          <span className="hidden sm:inline">Ajouter au panier</span>
+                          <span>{!item.realEstateType && item.stock <= 0 ? "Indisponible" : "Commander"}</span>
                         </button>
                       )}
                     </div>
@@ -2090,6 +2799,123 @@ function App() {
             </div>
           </div>
           {showProducts && (
+            <details
+              open={!isMobileViewport || filtersOpen}
+              onToggle={(event) => setFiltersOpen(event.currentTarget.open)}
+              className="mt-3 rounded-xl border border-slate-200 bg-white sm:mt-4"
+            >
+              <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-sm font-semibold text-slate-800 sm:px-4">
+                <span>Filtres de recherche</span>
+                <span className="flex items-center gap-2">
+                  {[
+                    Boolean(query.trim()),
+                    category !== "Toutes",
+                    Boolean(cityFilter),
+                    Boolean(minPriceFilter || maxPriceFilter),
+                    currencyFilter !== "Toutes",
+                    Boolean(conditionFilter),
+                  ].filter(Boolean).length > 0 && (
+                    <span className="badge badge-sm border-0 bg-blue-100 text-[#143ca8]">
+                      {[
+                        Boolean(query.trim()),
+                        category !== "Toutes",
+                        Boolean(cityFilter),
+                        Boolean(minPriceFilter || maxPriceFilter),
+                        currencyFilter !== "Toutes",
+                        Boolean(conditionFilter),
+                      ].filter(Boolean).length} actif(s)
+                    </span>
+                  )}
+                  <ChevronRight size={16} className="transition-transform open:rotate-90" />
+                </span>
+              </summary>
+              <div className="grid gap-3 border-t border-slate-100 p-3 sm:grid-cols-2 sm:p-4 lg:grid-cols-4">
+                <label className="form-control gap-1 text-xs font-semibold text-slate-600">
+                  <span>Catégorie</span>
+                  <select value={category} onChange={(event) => setCategory(event.target.value)} className="select select-bordered select-sm min-h-10 w-full bg-white text-sm">
+                    <option value="Toutes">Toutes les catégories</option>
+                    {availableCategories.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+                  </select>
+                </label>
+                <label className="form-control gap-1 text-xs font-semibold text-slate-600">
+                  <span>Ville</span>
+                  <input
+                    list="mbokamaket-catalog-cities"
+                    value={cityFilter}
+                    onChange={(event) => setCityFilter(event.target.value)}
+                    placeholder="Toutes les villes"
+                    className="input input-bordered input-sm min-h-10 w-full bg-white text-sm"
+                  />
+                  <datalist id="mbokamaket-catalog-cities">
+                    {availableCities.map((city) => <option key={city} value={city} />)}
+                  </datalist>
+                </label>
+                <label className="form-control gap-1 text-xs font-semibold text-slate-600">
+                  <span>État</span>
+                  <select value={conditionFilter} onChange={(event) => setConditionFilter(event.target.value)} className="select select-bordered select-sm min-h-10 w-full bg-white text-sm">
+                    <option value="">Tous les états</option>
+                    {availableConditions.map((condition) => <option key={condition} value={condition}>{condition}</option>)}
+                  </select>
+                </label>
+                <div className="form-control gap-1 text-xs font-semibold text-slate-600">
+                  <label htmlFor="catalog-price-currency">Prix et devise</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <select id="catalog-price-currency" value={currencyFilter} onChange={(event) => setCurrencyFilter(event.target.value as "Toutes" | "FC" | "USD")} className="select select-bordered select-sm col-span-1 min-h-10 bg-white text-sm">
+                      <option value="Toutes">Toutes</option>
+                      <option value="FC">FC</option>
+                      <option value="USD">USD</option>
+                    </select>
+                    <input type="number" min="0" step="any" value={minPriceFilter} onChange={(event) => setMinPriceFilter(event.target.value)} placeholder="Minimum" aria-label="Prix minimum" className="input input-bordered input-sm col-span-1 min-h-10 min-w-0 bg-white text-sm" />
+                    <input type="number" min="0" step="any" value={maxPriceFilter} onChange={(event) => setMaxPriceFilter(event.target.value)} placeholder="Maximum" aria-label="Prix maximum" className="input input-bordered input-sm col-span-1 min-h-10 min-w-0 bg-white text-sm" />
+                  </div>
+                  {(minPriceFilter || maxPriceFilter) && currencyFilter === "Toutes" && (
+                    <span className="font-normal text-amber-700">Choisissez FC ou USD pour filtrer une fourchette de prix.</span>
+                  )}
+                  {minPriceFilter && maxPriceFilter && Number(minPriceFilter) > Number(maxPriceFilter) && (
+                    <span role="alert" className="font-normal text-rose-600">Le minimum doit être inférieur au maximum.</span>
+                  )}
+                </div>
+                <div className="flex items-end sm:col-span-2 lg:col-span-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setQuery("");
+                      setCategory("Toutes");
+                      setSellerFilter(null);
+                      setCityFilter("");
+                      setMinPriceFilter("");
+                      setMaxPriceFilter("");
+                      setCurrencyFilter("Toutes");
+                      setConditionFilter("");
+                    }}
+                    className="btn btn-ghost btn-sm min-h-10 text-[#143ca8]"
+                    disabled={!query && category === "Toutes" && !sellerFilter && !cityFilter && !minPriceFilter && !maxPriceFilter && currencyFilter === "Toutes" && !conditionFilter}
+                  >
+                    Effacer les filtres
+                  </button>
+                </div>
+              </div>
+            </details>
+          )}
+          {showProducts && user && !user.isAnonymous && (
+            <SearchAlerts
+              key={user.id}
+              userId={user.id}
+              query={query}
+              categoryId={category === "Toutes" ? "" : category}
+              city={cityFilter}
+              onApply={(savedQuery, savedCategoryId, savedCity) => {
+                setQuery(savedQuery);
+                setCategory(savedCategoryId || "Toutes");
+                setCityFilter(savedCity ? searchCityLabel(savedCity) : "");
+                setSellerFilter(null);
+                setProductPage(1);
+                setShowProducts(true);
+                window.location.hash = "produits";
+              }}
+            />
+          )}
+          {showProducts && (
             <div className="mt-2 flex flex-col gap-2 rounded-xl border border-slate-100 bg-white p-2.5 sm:mt-4 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:p-3">
               <p className="text-xs text-slate-500 sm:text-sm">
                 {filteredProducts.length} annonce{filteredProducts.length === 1 ? "" : "s"}
@@ -2138,10 +2964,10 @@ function App() {
                         alt={item.title}
                           loading="lazy"
                           decoding="async"
-                        className="h-full w-full object-cover"
+                        className="absolute inset-0 h-full w-full object-cover"
                       />
                     ) : (
-                      <div className="grid h-full place-items-center text-slate-400">
+                      <div className="absolute inset-0 grid place-items-center text-slate-400">
                         Pas d’image
                       </div>
                     )}
@@ -2166,18 +2992,11 @@ function App() {
                     </button>
                   </div>
                   <div className="flex min-w-0 flex-1 flex-col p-2 sm:p-4">
-                    <div className="flex min-w-0 items-start gap-1.5">
-                      <h3 className="line-clamp-2 min-h-9 min-w-0 flex-1 text-sm font-bold leading-4 sm:min-h-0 sm:text-base sm:leading-normal">{item.title}</h3>
-                      {item.verified && (
-                        <span className="badge badge-xs shrink-0 gap-0.5 border-0 bg-[#1877f2] px-1 text-white sm:badge-sm sm:gap-1 sm:px-2">
-                          <ShieldCheck size={11} className="sm:hidden" /><ShieldCheck size={13} className="hidden sm:block" />
-                          <span className="hidden sm:inline">Vérifié</span>
-                        </span>
-                      )}
-                    </div>
+                    <h3 className="line-clamp-2 min-h-9 min-w-0 text-sm font-bold leading-4 sm:min-h-0 sm:text-base sm:leading-normal">{item.title}</h3>
                     <div className="mt-1 min-w-0 sm:mt-0">
                       <PriceDisplay product={item} compact dense />
                     </div>
+                    <ProductAvailability product={item} compact />
                     <p className="mt-1 flex min-w-0 items-center gap-1 truncate text-[11px] leading-4 text-slate-500 sm:text-xs">
                       <MapPin size={12} className="shrink-0 sm:size-[13px]" />
                       <span className="truncate">{item.location}</span>
@@ -2188,21 +3007,48 @@ function App() {
                       ) : (
                         <span className="grid size-5 shrink-0 place-items-center rounded-full bg-[#edf3ff] text-[#143ca8] sm:size-7"><UserRound size={12} className="sm:hidden" /><UserRound size={14} className="hidden sm:block" /></span>
                       )}
-                      <span className="line-clamp-1 min-w-0">{item.seller} · {item.category}</span>
+                      <span className="flex min-w-0 flex-1 items-center gap-1">
+                        <span className="truncate">{item.seller}</span>
+                        {item.verified && (
+                          <span
+                            className="grid size-[18px] shrink-0 place-items-center rounded-full bg-[#0ea5e9] text-white"
+                            role="img"
+                            aria-label="Vendeur certifié"
+                            title="Vendeur certifié"
+                          >
+                            <BadgeCheck size={12} />
+                          </span>
+                        )}
+                        {item.sellerAccountType && item.sellerAccountType !== "personal" && getAccountTypeLabel(item.sellerAccountType) && (
+                          <span
+                            className={`inline-flex shrink-0 items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[9px] font-bold leading-none sm:text-[10px] ${
+                              item.sellerAccountType === "boutique_pro" || item.sellerAccountType === "magasin_pro"
+                                ? "border-[#d4af37] bg-[#fff4cc] text-[#8a5a00]"
+                                : "border-blue-100 bg-blue-50 text-[#143ca8]"
+                            }`}
+                            aria-label={`Type de compte : ${getAccountTypeLabel(item.sellerAccountType)}`}
+                            title={getAccountTypeLabel(item.sellerAccountType)}
+                          >
+                            {item.sellerAccountType.includes("magasin") ? <Warehouse size={11} /> : item.sellerAccountType === "agence_immo" ? <Home size={11} /> : <Store size={11} />}
+                            {getAccountTypeLabel(item.sellerAccountType)}
+                          </span>
+                        )}
+                        <span className="shrink-0">·</span>
+                        <span className="truncate">{item.category}</span>
+                      </span>
                     </div>
                     {item.status === "active" && item.sellerId !== user?.id && (
                       <button
                         type="button"
                         onClick={(event) => {
                           event.stopPropagation();
-                          if (getSelectableSpecifications(item.specifications).length) openProduct(item);
-                          else addToCart(item);
+                          startProductOrder(item);
                         }}
-                        className="btn btn-sm mt-auto min-h-8 h-8 w-full gap-1 border-[#143ca8] bg-[#143ca8] px-1 text-xs text-white hover:bg-[#102f85] sm:btn-md sm:mt-4 sm:min-h-12 sm:h-auto sm:gap-2 sm:px-4 sm:text-sm"
+                        disabled={!item.realEstateType && item.stock <= 0}
+                        className="btn btn-sm mt-auto min-h-8 h-8 w-full gap-1 border-[#143ca8] bg-[#143ca8] px-1 text-xs text-white hover:bg-[#102f85] disabled:border-slate-300 disabled:bg-slate-300 sm:btn-md sm:mt-4 sm:min-h-12 sm:h-auto sm:gap-2 sm:px-4 sm:text-sm"
                       >
                         <ShoppingCart size={14} className="shrink-0 sm:size-4" />
-                        <span className="sm:hidden">Panier</span>
-                        <span className="hidden sm:inline">Ajouter au panier</span>
+                        <span>{!item.realEstateType && item.stock <= 0 ? "Indisponible" : "Commander"}</span>
                       </button>
                     )}
                   </div>
@@ -2276,10 +3122,10 @@ function App() {
                     </p>
                   </div>
                   <h1 className="mt-4 font-display text-3xl font-bold leading-tight sm:text-4xl">
-                    <span className="animated-slogan" aria-label="Achetez, vendez et découvrez près de chez vous.">
-                      <span className="slogan-line slogan-line-one">Achetez, vendez</span>
-                      <span className="slogan-line slogan-line-two">et découvrez près</span>
-                      <span className="slogan-line slogan-line-three">de chez vous.</span>
+                    <span className="animated-slogan" aria-label="Somba teka na mboka nayo.">
+                      <span className="slogan-line slogan-line-one">Somba teka</span>
+                      <span className="slogan-line slogan-line-two">na mboka</span>
+                      <span className="slogan-line slogan-line-three">nayo.</span>
                     </span>
                   </h1>
                   <p className="mt-4 max-w-lg leading-7 text-slate-600">
@@ -2369,14 +3215,71 @@ function App() {
         </div>
       )}
       {legalPage && <LegalPage page={legalPage} onClose={goHome} />}
+      {businessSpaceOpen && user && hasBusinessWorkspace && (
+        <BusinessSpacePage
+          user={user}
+          onClose={goHome}
+          onDashboard={openSellerDashboard}
+          onManageProducts={openManageProducts}
+          onStockManagement={openStockManagement}
+          onSellerOrders={openSellerOrders}
+          onBusinessOrders={openBusinessOrders}
+          onDeliverySettings={openDeliverySettings}
+          onPublish={() => {
+            setBusinessSpaceOpen(false);
+            setPublishOpen(true);
+            window.location.hash = "publier";
+          }}
+        />
+      )}
+      {sellerDashboardOpen && user?.role === "seller" && (
+        <SellerDashboardPage
+          user={user}
+          products={products.filter((product) => product.sellerId === (user.businessOwnerId || user.id))}
+          onClose={goHome}
+          onManageProducts={openManageProducts}
+          onStockManagement={openStockManagement}
+          onSellerOrders={openSellerOrders}
+          onBusinessOrders={openBusinessOrders}
+          onDeliverySettings={openDeliverySettings}
+          onPublish={() => {
+            setSellerDashboardOpen(false);
+            setPublishOpen(true);
+            window.location.hash = "publier";
+          }}
+        />
+      )}
+      {deliverySettingsOpen && user && (
+        <SellerDeliverySettingsPage
+          userId={user.businessOwnerId || user.id}
+          canEdit={!user.businessOwnerId || user.businessOwnerId === user.id}
+          onClose={() => {
+            setDeliverySettingsOpen(false);
+          }}
+          onSaved={(settings) => {
+            const sellerId = user.businessOwnerId || user.id;
+            setProducts((current) => current.map((product) => product.sellerId === sellerId
+              ? { ...product, deliverySettings: settings }
+              : product));
+            setCartItems((current) => current.map((item) => item.product.sellerId === sellerId
+              ? { ...item, product: { ...item.product, deliverySettings: settings } }
+              : item));
+          }}
+        />
+      )}
       {profileOpen && user && (
         <ProfilePanel
           user={user}
           onClose={() => setProfileOpen(false)}
+          onBusinessSpace={openBusinessSpace}
+          onSellerDashboard={openSellerDashboard}
           onManageProducts={openManageProducts}
           onStockManagement={openStockManagement}
           onManageProfile={openProfileManagement}
+          onFavorites={openFavorites}
+          onConnections={openConnections}
           onSellerOrders={openSellerOrders}
+          onBusinessOrders={openBusinessOrders}
           onPublish={() => { setProfileOpen(false); setPublishOpen(true); window.location.hash = "publier"; }}
           onSignOut={async () => {
             await supabase?.auth.signOut();
@@ -2394,11 +3297,100 @@ function App() {
         <SellerOrdersPage
           user={{ id: user.id, role: user.role, accountType: user.accountType }}
           onClose={() => setSellerOrdersOpen(false)}
+          onOpenBusinessOrders={openBusinessOrders}
+        />
+      )}
+      {businessOrdersOpen && user && (
+        <BusinessOrdersPage
+          user={{
+            id: user.id,
+            role: user.role,
+            accountType: user.accountType,
+            businessOwnerId: user.businessOwnerId,
+            businessRole: user.businessRole,
+          }}
+          onClose={() => setBusinessOrdersOpen(false)}
+        />
+      )}
+      {messagesOpen && (
+        <MessagesPage
+          user={user ? { id: user.id, fullName: user.fullName, avatar: user.avatar, isAnonymous: user.isAnonymous, businessOwnerId: user.businessOwnerId } : null}
+          target={messagesTarget}
+          onClose={() => { setMessagesOpen(false); setMessagesTarget(null); }}
+          onLogin={() => { setMessagesOpen(false); setMessagesTarget(null); openAuth(); }}
+          onDownload={openDownload}
+          onUnreadCountChange={updateUnreadMessageCount}
         />
       )}
       {authSuccessMessage && <div className="fixed right-4 top-4 z-[120] max-w-sm rounded-2xl bg-emerald-600 px-5 py-4 text-sm font-semibold text-white shadow-2xl" role="status">{authSuccessMessage}</div>}
       {passwordResetRoute && <PasswordResetPage onClose={() => { window.history.replaceState(null, "", window.location.pathname); window.location.hash = "accueil"; }} onLogin={() => { window.history.replaceState(null, "", window.location.pathname); window.location.hash = "connexion"; }} />}
     </div>
+  );
+}
+
+function FavoritesPage({
+  products,
+  loading,
+  onClose,
+  onOpenProduct,
+  onToggleFavorite,
+}: {
+  products: Product[];
+  loading: boolean;
+  onClose: () => void;
+  onOpenProduct: (product: Product) => void;
+  onToggleFavorite: (productId: string) => void;
+}) {
+  return (
+    <section className="fixed inset-0 z-[85] overflow-y-auto bg-[#f6f8fc] text-slate-900" aria-label="Mes favoris">
+      <header className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3 sm:px-6">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#143ca8]">Mon compte</p>
+          <h1 className="font-display text-lg font-bold">Mes favoris</h1>
+        </div>
+        <button type="button" onClick={onClose} className="btn btn-ghost btn-sm">
+          <ChevronLeft size={18} /> Retour
+        </button>
+      </header>
+      <main className="mx-auto max-w-7xl px-3 py-5 sm:px-6 sm:py-8">
+        {loading ? (
+          <div className="flex justify-center py-16"><LoaderCircle className="animate-spin text-[#143ca8]" /></div>
+        ) : products.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-5 py-16 text-center">
+            <Heart className="mx-auto text-slate-300" size={40} />
+            <h2 className="mt-3 font-semibold">Aucun favori pour le moment</h2>
+            <p className="mt-1 text-sm text-slate-500">Ajoutez des produits à vos favoris pour les retrouver ici sur tous vos appareils.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
+            {products.map((product) => (
+              <article key={product.id} className="flex min-w-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <button type="button" onClick={() => onOpenProduct(product)} className="text-left">
+                  <div className="relative aspect-[4/3] bg-slate-100">
+                    {product.image
+                      ? <img src={product.image} alt={product.title} className="absolute inset-0 size-full object-cover" />
+                      : <div className="absolute inset-0 grid place-items-center text-sm text-slate-400">Pas d’image</div>}
+                  </div>
+                  <div className="p-3 sm:p-4">
+                    <h2 className="line-clamp-2 min-h-10 text-sm font-bold sm:text-base">{product.title}</h2>
+                    <PriceDisplay product={product} compact />
+                    <p className="mt-2 truncate text-xs text-slate-500">{product.location} · {product.seller}</p>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onToggleFavorite(product.id)}
+                  className="btn btn-ghost btn-sm mt-auto justify-start rounded-none border-t border-slate-100 text-rose-600"
+                  aria-label={`Retirer ${product.title} des favoris`}
+                >
+                  <Heart size={16} fill="currentColor" /> Retirer des favoris
+                </button>
+              </article>
+            ))}
+          </div>
+        )}
+      </main>
+    </section>
   );
 }
 
@@ -2536,7 +3528,7 @@ function Footer({
       <div className="mx-auto grid max-w-7xl gap-8 px-4 py-8 sm:px-6 md:grid-cols-[1fr_1.15fr_1fr] md:gap-12 md:py-12">
         <div>
           <div className="flex items-center gap-3"><img src={appIcon} alt="Logo Mbokamarket RDC" loading="lazy" decoding="async" className="size-11 rounded-xl" /><strong className="font-display text-xl">Mbokamarket RDC</strong></div>
-          <p className="mt-4 max-w-xs text-sm leading-6 text-blue-100">Achetez, vendez et découvrez près de chez vous.</p>
+          <p className="mt-4 max-w-xs text-sm leading-6 text-blue-100">Somba teka na mboka nayo.</p>
           {visitorCount !== null && <p className="mt-3 text-sm text-blue-100"><Eye size={15} className="mr-1 inline-block" />{visitorCount.toLocaleString("fr-FR")} visiteurs</p>}
           <div className="mt-6">
             <p className="text-sm font-bold text-white">Suivez-nous</p>
@@ -2619,10 +3611,7 @@ function AuthPage({ initialMode, onClose }: { initialMode: "login" | "signup"; o
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
-  const [role, setRole] = useState<"buyer" | "seller">("buyer");
-  const [accountType, setAccountType] = useState("personal");
-  const [businessName, setBusinessName] = useState("");
-  const [referralCode, setReferralCode] = useState("");
+  const [role, setRole] = useState<"buyer" | "seller">("seller");
   const [acceptedPrivacy, setAcceptedPrivacy] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -2657,14 +3646,26 @@ function AuthPage({ initialMode, onClose }: { initialMode: "login" | "signup"; o
     }
     if (mode === "signup" && !/^\d{8,15}$/.test(phone.replace(/\D/g, ""))) { setError("Le numéro de téléphone n’est pas valide."); return; }
     if (mode === "signup" && password.length < 8) { setError("Le mot de passe doit contenir au moins 8 caractères."); return; }
-    if (mode === "signup" && role === "seller" && (accountType === "boutique" || accountType === "magasin") && !businessName.trim()) { setError("Veuillez renseigner le nom de votre boutique ou magasin."); return; }
     if (mode === "signup" && password !== confirmPassword) { setError("Les mots de passe ne correspondent pas."); return; }
     if (mode === "signup" && !acceptedPrivacy) { setError("Vous devez accepter la Politique de confidentialité."); return; }
     setBusy(true);
     try {
       const result = mode === "login"
         ? await supabase.auth.signInWithPassword({ email, password })
-        : await supabase.auth.signUp({ email, password, options: { data: { name, phone, role, account_type: role === "buyer" ? "personal" : accountType, business_name: businessName || null, referral_code: referralCode || null, accepted_privacy: acceptedPrivacy, privacy_accepted: acceptedPrivacy } } });
+        : await supabase.auth.signUp({
+            email,
+            password,
+            options: {
+              data: {
+                name,
+                phone,
+                role,
+                ...(role === "seller" ? { account_type: "personal" } : {}),
+                accepted_privacy: acceptedPrivacy,
+                privacy_accepted: acceptedPrivacy,
+              },
+            },
+          });
       if (result.error) setError(result.error.message);
       else setSuccess(mode === "signup"
         ? "Votre compte a été créé avec succès. Vérifiez votre email pour activer le compte."
@@ -2702,7 +3703,7 @@ function AuthPage({ initialMode, onClose }: { initialMode: "login" | "signup"; o
           <img src={appIcon} alt="" className="size-9 object-contain sm:size-11" />
           <span>
             <strong className="block font-display text-base font-extrabold leading-none text-[#1677ff] sm:text-lg">Mbokamarket RDC</strong>
-            <small className="hidden text-[10px] uppercase tracking-widest text-slate-400 sm:block">Le marché près de vous</small>
+            <small className="hidden text-[10px] uppercase tracking-widest text-slate-400 sm:block">Somba teka na mboka nayo</small>
           </span>
         </a>
         <button type="button" onClick={onClose} className="btn btn-ghost btn-sm text-slate-600">
@@ -2730,9 +3731,13 @@ function AuthPage({ initialMode, onClose }: { initialMode: "login" | "signup"; o
         {mode === "signup" && <>
           <input required value={name} onChange={(event) => setName(event.target.value)} placeholder="Nom complet" className="input input-bordered mt-2 w-full" />
           <input required value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="Numéro de téléphone" className="input input-bordered mt-3 w-full" />
-          <div className="mt-3 grid grid-cols-2 gap-3"><select value={role} onChange={(event) => setRole(event.target.value as "buyer" | "seller")} className="select select-bordered w-full"><option value="buyer">Acheteur</option><option value="seller">Vendeur</option></select><select value={accountType} onChange={(event) => setAccountType(event.target.value)} className="select select-bordered w-full"><option value="personal">Personnel</option><option value="boutique">Boutique</option><option value="magasin">Magasin</option><option value="agence_immo">Agence immobilière</option></select></div>
-          {role === "seller" && (accountType === "boutique" || accountType === "magasin") && <input required value={businessName} onChange={(event) => setBusinessName(event.target.value)} placeholder={accountType === "boutique" ? "Nom de la boutique" : "Nom du magasin"} className="input input-bordered mt-3 w-full" />}
-          <input value={referralCode} onChange={(event) => setReferralCode(event.target.value)} placeholder="Code du parrain (optionnel)" className="input input-bordered mt-3 w-full" />
+          <label className="form-control mt-3">
+            <span className="label-text font-semibold">Votre rôle</span>
+            <select value={role} onChange={(event) => setRole(event.target.value as "buyer" | "seller")} className="select select-bordered mt-2 w-full">
+              <option value="buyer">Acheteur</option>
+              <option value="seller">Vendeur</option>
+            </select>
+          </label>
         </>}
         <input
           required
@@ -2795,7 +3800,7 @@ function AuthPage({ initialMode, onClose }: { initialMode: "login" | "signup"; o
   );
 }
 function PublishModal({ user, onClose, onCreated }: { user: User; onClose: () => void; onCreated: () => void }) {
-  const [form, setForm] = useState({ title: "", price: "", originalPrice: "", stock: "1", currency: "FC", city: "", exactLocation: "", description: "", realEstateType: "", guaranteeMonths: "", category_id: categories.find((category) => category.id !== "3")?.id ?? categories[0].id, condition: "", images: "", noPrice: false, hasReduction: false, specifications: {} as Record<string, string> });
+  const [form, setForm] = useState({ title: "", price: "", originalPrice: "", wholesalePrice: "", stock: "1", currency: "FC", city: "", exactLocation: "", description: "", realEstateType: "", guaranteeMonths: "", category_id: categories.find((category) => category.id !== "3")?.id ?? categories[0].id, condition: "", images: "", noPrice: false, hasReduction: false, specifications: {} as Record<string, string> });
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -2827,12 +3832,16 @@ function PublishModal({ user, onClose, onCreated }: { user: User; onClose: () =>
     setError("");
     const price = form.noPrice ? 0 : Number(form.price);
     const originalPrice = !form.noPrice && form.hasReduction ? Number(form.originalPrice) : null;
+    const wholesalePrice = isProfessionalBusiness && !isRealEstate && !form.noPrice && form.wholesalePrice.trim()
+      ? Number(form.wholesalePrice)
+      : null;
     const stock = Number(form.stock);
     const legacyImages = form.images.split(",").map((item) => item.trim()).filter(Boolean);
     let uploadedImages: string[] = [];
     if (!form.title.trim() || !form.description.trim()) { setError("Le titre et la description sont obligatoires."); return; }
     if (!Number.isFinite(price) || (!form.noPrice && price <= 0)) { setError("Le prix doit être supérieur à zéro."); return; }
     if (originalPrice !== null && (!Number.isFinite(originalPrice) || originalPrice <= price)) { setError("Le prix normal doit être supérieur au prix proposé."); return; }
+    if (wholesalePrice !== null && (!Number.isFinite(wholesalePrice) || wholesalePrice <= 0 || wholesalePrice >= price)) { setError("Le prix de gros doit être positif et inférieur au prix unitaire normal."); return; }
     if (requiresStockManagement && (!Number.isInteger(stock) || stock < 0)) { setError("Le stock doit être un nombre entier positif."); return; }
     if (selectedFiles.length + legacyImages.length > photoLimit) { setError(`Vous pouvez ajouter ${photoLimit} images au maximum pour ce compte.`); return; }
     if (!form.city.trim() || (isRealEstate && !form.exactLocation.trim())) { setError("La ville et la localisation sont obligatoires."); return; }
@@ -2847,11 +3856,13 @@ function PublishModal({ user, onClose, onCreated }: { user: User; onClose: () =>
       try {
         uploadedImages = await Promise.all(
           selectedFiles.map(async (file, index) => {
-            const fileExt = file.name.split(".").pop() || "jpg";
+            const optimizedFile = await optimizeProductImage(file);
+            const fileExt = optimizedFile.name.split(".").pop() || "jpg";
             const fileName = `${user.id}/${Date.now()}-${index}.${fileExt}`;
-            const { data, error: uploadError } = await client.storage.from(PRODUCT_IMAGES_BUCKET).upload(fileName, file, {
-              cacheControl: "3600",
+            const { data, error: uploadError } = await client.storage.from(PRODUCT_IMAGES_BUCKET).upload(fileName, optimizedFile, {
+              cacheControl: "31536000",
               upsert: false,
+              contentType: optimizedFile.type || file.type,
             });
             if (uploadError) throw uploadError;
             const { data: publicUrlData } = client.storage.from(PRODUCT_IMAGES_BUCKET).getPublicUrl(data?.path || fileName);
@@ -2873,6 +3884,7 @@ function PublishModal({ user, onClose, onCreated }: { user: User; onClose: () =>
       description: form.description.trim(),
       price,
       original_price: isRealEstate || form.noPrice ? null : originalPrice,
+      wholesale_price: wholesalePrice,
       currency: form.currency,
       images,
       category_id: specificationCategoryId,
@@ -2905,7 +3917,7 @@ function PublishModal({ user, onClose, onCreated }: { user: User; onClose: () =>
         {!isRealEstate && (
           <div className="mt-4 space-y-3">
             <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
-              <input type="checkbox" checked={form.noPrice} onChange={(event) => setForm((current) => ({ ...current, noPrice: event.target.checked, hasReduction: event.target.checked ? false : current.hasReduction }))} className="checkbox checkbox-primary checkbox-sm" />
+              <input type="checkbox" checked={form.noPrice} onChange={(event) => setForm((current) => ({ ...current, noPrice: event.target.checked, hasReduction: event.target.checked ? false : current.hasReduction, wholesalePrice: event.target.checked ? "" : current.wholesalePrice }))} className="checkbox checkbox-primary checkbox-sm" />
               Publier sans prix
             </label>
             {!form.noPrice && (
@@ -2915,6 +3927,13 @@ function PublishModal({ user, onClose, onCreated }: { user: User; onClose: () =>
               </label>
             )}
           </div>
+        )}
+        {!isRealEstate && isProfessionalBusiness && !form.noPrice && (
+          <label className="mt-3 block">
+            <span className="mb-1 block text-sm font-semibold text-slate-700">Prix de gros (facultatif)</span>
+            <input type="number" min="0.01" step="0.01" value={form.wholesalePrice} onChange={(event) => update("wholesalePrice", event.target.value)} placeholder="Prix par pièce à partir de 10 unités" className="input input-bordered w-full" />
+            <span className="mt-1 block text-xs leading-5 text-slate-500">À partir de 10 unités du même produit, variantes comprises, ce tarif s’applique à toutes les pièces.</span>
+          </label>
         )}
         <div className={`grid gap-3 ${isRealEstate || !form.hasReduction ? "sm:grid-cols-2" : "sm:grid-cols-3"}`}>
           {!form.noPrice && <input required type="number" min="0.01" step="0.01" value={form.price} onChange={(event) => update("price", event.target.value)} placeholder={isRealEstate ? "Prix de vente" : form.hasReduction ? "Prix réduit" : "Prix"} className="input input-bordered mt-3 w-full" />}
@@ -3015,7 +4034,7 @@ function PublishModal({ user, onClose, onCreated }: { user: User; onClose: () =>
         </label>
         {selectedFiles.length > 0 && <p className="mt-2 text-xs text-slate-500">{selectedFiles.length} image(s) sélectionnée(s) (maximum {photoLimit}).</p>}
         <input value={form.images} onChange={(event) => update("images", event.target.value)} placeholder="URLs images séparées par des virgules" className="input input-bordered mt-3 w-full" />
-        <p className="mt-2 text-xs text-slate-500">Ajoutez 1 à {photoLimit} images. Les fichiers uploadés dans le bucket product-images ou les URLs HTTPS sont acceptés.</p>
+        <p className="mt-2 text-xs text-slate-500">Ajoutez 1 à {photoLimit} images. Les photos sont redimensionnées et compressées avant l’envoi pour accélérer leur affichage. Les GIF et SVG restent inchangés.</p>
         {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
         <button disabled={busy} className="btn btn-primary mt-5 w-full">
           {busy ? <LoaderCircle className="animate-spin" size={17} /> : "Publier l’annonce"}
@@ -3026,25 +4045,354 @@ function PublishModal({ user, onClose, onCreated }: { user: User; onClose: () =>
 }
 void PublishModal;
 
-function ProfilePanel({
+const getBusinessSpaceTitle = (accountType?: string, isLinkedBusiness = false) => {
+  if (accountType === "boutique") return "Espace boutique";
+  if (accountType === "magasin") return "Espace magasin";
+  if (accountType === "boutique_pro") return "Espace boutique Pro";
+  if (accountType === "magasin_pro") return "Espace magasin Pro";
+  return isLinkedBusiness ? "Espace professionnel" : "Espace vendeur";
+};
+
+function BusinessSpacePage({
   user,
+  onClose,
+  onDashboard,
+  onManageProducts,
+  onStockManagement,
+  onSellerOrders,
+  onBusinessOrders,
+  onDeliverySettings,
+  onPublish,
+}: {
+  user: User;
+  onClose: () => void;
+  onDashboard: () => void;
+  onManageProducts: () => void;
+  onStockManagement: () => void;
+  onSellerOrders: () => void;
+  onBusinessOrders: () => void;
+  onDeliverySettings: () => void;
+  onPublish: () => void;
+}) {
+  const isRetailBusiness = ["boutique", "magasin", "boutique_pro", "magasin_pro"].includes(user.accountType || "");
+  const isProfessional = user.accountType === "boutique_pro" || user.accountType === "magasin_pro";
+  const title = getBusinessSpaceTitle(user.accountType, Boolean(user.businessOwnerId));
+  const businessName = isBusinessDisplayAccount(user.accountType) ? user.businessName?.trim() : "";
+
+  return (
+    <div className="fixed inset-0 z-[85] overflow-y-auto bg-[#f6f8fc] text-slate-900" role="dialog" aria-modal="true" aria-label={title}>
+      <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 backdrop-blur">
+        <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-4 sm:px-6">
+          <button type="button" onClick={onClose} className="btn btn-ghost btn-circle btn-sm" aria-label="Retour à l’accueil">
+            <ChevronLeft size={19} />
+          </button>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#143ca8]">Mbokamarket</p>
+            <h1 className="truncate font-display text-xl font-bold">{title}</h1>
+          </div>
+          <button type="button" onClick={onClose} className="btn btn-ghost btn-circle btn-sm" aria-label="Fermer">
+            <X size={18} />
+          </button>
+        </div>
+      </header>
+      <main className="mx-auto max-w-5xl px-4 py-7 sm:px-6 sm:py-10">
+        <section className="rounded-3xl bg-[#143ca8] p-6 text-white shadow-lg shadow-blue-900/10 sm:p-8">
+          <div className="flex items-start gap-4">
+            <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-white/15">
+              {user.accountType === "magasin" || user.accountType === "magasin_pro"
+                ? <Warehouse size={25} />
+                : <Store size={25} />}
+            </span>
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-blue-100">{title}</p>
+              <h2 className="mt-1 truncate font-display text-2xl font-bold">{businessName || user.fullName || "Gérez votre activité"}</h2>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-blue-100">
+                Retrouvez au même endroit vos produits, vos stocks et vos commandes.
+              </p>
+            </div>
+          </div>
+        </section>
+        <section className="mt-6 grid gap-3 sm:grid-cols-2">
+          <BusinessSpaceAction
+            icon={<BarChart3 size={20} />}
+            title="Tableau de bord"
+            description="Consulter vos ventes, vos commandes et votre inventaire."
+            onClick={onDashboard}
+          />
+          <BusinessSpaceAction
+            icon={<Package size={20} />}
+            title="Gérer mes produits"
+            description="Consulter, modifier ou retirer vos annonces."
+            onClick={onManageProducts}
+          />
+          {isRetailBusiness && (
+            <BusinessSpaceAction
+              icon={<Warehouse size={20} />}
+              title="Gestion des stocks"
+              description="Suivre les quantités disponibles et réapprovisionner."
+              onClick={onStockManagement}
+            />
+          )}
+          {isRetailBusiness && (
+            <BusinessSpaceAction
+              icon={<Truck size={20} />}
+              title="Paramètres de livraison"
+              description="Définir les frais de base et les tarifs par commune."
+              onClick={onDeliverySettings}
+            />
+          )}
+          {user.role === "seller" && (
+            <BusinessSpaceAction
+              icon={<ClipboardList size={20} />}
+              title="Commandes reçues"
+              description="Suivre les commandes passées sur vos produits."
+              onClick={onSellerOrders}
+            />
+          )}
+          {(isProfessional || user.businessRole || user.businessOwnerId) && (
+            <BusinessSpaceAction
+              icon={<ClipboardList size={20} />}
+              title="Commandes professionnelles"
+              description="Gérer les commandes de l’espace professionnel."
+              onClick={onBusinessOrders}
+            />
+          )}
+          {user.isVerified && (
+            <BusinessSpaceAction
+              icon={<Plus size={20} />}
+              title="Publier une annonce"
+              description="Ajouter un produit ou un service à votre catalogue."
+              onClick={onPublish}
+            />
+          )}
+        </section>
+      </main>
+    </div>
+  );
+}
+
+type SellerDashboardOrder = {
+  id: string;
+  total: number | string;
+  payment_currency?: string | null;
+  status: string;
+  payment_status?: string | null;
+  business_stage?: string | null;
+};
+
+function SellerDashboardPage({
+  user,
+  products,
   onClose,
   onManageProducts,
   onStockManagement,
-  onManageProfile,
   onSellerOrders,
+  onBusinessOrders,
+  onDeliverySettings,
+  onPublish,
+}: {
+  user: User;
+  products: Product[];
+  onClose: () => void;
+  onManageProducts: () => void;
+  onStockManagement: () => void;
+  onSellerOrders: () => void;
+  onBusinessOrders: () => void;
+  onDeliverySettings: () => void;
+  onPublish: () => void;
+}) {
+  const sellerId = user.businessOwnerId || user.id;
+  const hasBusinessOrders = user.accountType === "boutique_pro"
+    || user.accountType === "magasin_pro"
+    || Boolean(user.businessRole || user.businessOwnerId);
+  const hasStockManagement = ["boutique", "magasin", "boutique_pro", "magasin_pro"].includes(user.accountType || "");
+  const [orders, setOrders] = useState<SellerDashboardOrder[]>([]);
+  const [loadingOrders, setLoadingOrders] = useState(true);
+  const [ordersError, setOrdersError] = useState("");
+
+  const loadOrders = useCallback(async () => {
+    if (!supabase) {
+      setOrdersError("La configuration Supabase est absente.");
+      setLoadingOrders(false);
+      return;
+    }
+    setLoadingOrders(true);
+    setOrdersError("");
+    const { data, error: loadError } = await supabase
+      .from("orders")
+      .select("id,total,payment_currency,status,payment_status,business_stage")
+      .eq("seller_id", sellerId)
+      .order("created_at", { ascending: false });
+    if (loadError) {
+      setOrdersError(loadError.message);
+      setOrders([]);
+    } else {
+      setOrders((data ?? []) as SellerDashboardOrder[]);
+    }
+    setLoadingOrders(false);
+  }, [sellerId]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void loadOrders(); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [loadOrders]);
+
+  const totalUnits = products.reduce((total, product) => total + Math.max(0, Number(product.stock) || 0), 0);
+  const lowStockCount = products.filter((product) => product.status !== "sold" && Number(product.stock) <= 3).length;
+  const pendingOrders = orders.filter((order) =>
+    order.status !== "Cancelled"
+    && (order.status === "Pending" || ["awaiting_seller", "awaiting_owner", "issue"].includes(order.business_stage || "")),
+  ).length;
+  const revenueByCurrency = new Map<string, number>();
+  orders.filter((order) => order.payment_status === "confirmed").forEach((order) => {
+    const currency = String(order.payment_currency || "FC").toUpperCase();
+    revenueByCurrency.set(currency, (revenueByCurrency.get(currency) || 0) + (Number(order.total) || 0));
+  });
+  const revenueSummary = revenueByCurrency.size
+    ? Array.from(revenueByCurrency, ([currency, amount]) => `${amount.toLocaleString("fr-FR")} ${currency}`).join(" · ")
+    : "0 FC";
+  const title = getBusinessSpaceTitle(user.accountType, Boolean(user.businessOwnerId));
+
+  return (
+    <div className="fixed inset-0 z-[85] overflow-y-auto bg-[#f6f8fc] text-slate-900" role="dialog" aria-modal="true" aria-label={`${title} — tableau de bord`}>
+      <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 backdrop-blur">
+        <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-4 sm:px-6">
+          <button type="button" onClick={onClose} className="btn btn-ghost btn-circle btn-sm" aria-label="Retour à l’accueil">
+            <ChevronLeft size={19} />
+          </button>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#143ca8]">{title}</p>
+            <h1 className="truncate font-display text-xl font-bold">Tableau de bord</h1>
+          </div>
+          <button type="button" onClick={() => void loadOrders()} disabled={loadingOrders} className="btn btn-ghost btn-circle btn-sm" aria-label="Actualiser les données">
+            <RefreshCw size={17} className={loadingOrders ? "animate-spin" : ""} />
+          </button>
+        </div>
+      </header>
+      <main className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
+        <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <DashboardMetric label="Produits actifs" value={products.length.toLocaleString("fr-FR")} icon={<Package size={19} />} />
+          <DashboardMetric label="Unités en stock" value={totalUnits.toLocaleString("fr-FR")} icon={<Warehouse size={19} />} />
+          <DashboardMetric label="Commandes à traiter" value={loadingOrders ? "…" : pendingOrders.toLocaleString("fr-FR")} icon={<ClipboardList size={19} />} />
+          <DashboardMetric label="Revenus confirmés" value={loadingOrders ? "…" : revenueSummary} icon={<BarChart3 size={19} />} />
+        </section>
+        {ordersError && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{ordersError}</p>}
+        <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <BusinessSpaceAction icon={<Package size={20} />} title="Gérer mes produits" description="Consulter, modifier ou retirer vos annonces." onClick={onManageProducts} />
+          {hasStockManagement && <BusinessSpaceAction icon={<Warehouse size={20} />} title="Gestion des stocks" description="Suivre les quantités et réapprovisionner." onClick={onStockManagement} />}
+          {hasStockManagement && <BusinessSpaceAction icon={<Truck size={20} />} title="Paramètres de livraison" description="Définir les frais de base et les tarifs par commune." onClick={onDeliverySettings} />}
+          <BusinessSpaceAction icon={<ClipboardList size={20} />} title="Commandes reçues" description="Suivre les commandes de vos produits." onClick={onSellerOrders} />
+          {hasBusinessOrders && <BusinessSpaceAction icon={<ClipboardList size={20} />} title="Commandes professionnelles" description="Traiter les étapes de commande de l’entreprise." onClick={onBusinessOrders} />}
+          {user.isVerified && <BusinessSpaceAction icon={<Plus size={20} />} title="Publier une annonce" description="Ajouter un produit ou un service au catalogue." onClick={onPublish} />}
+        </section>
+        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-4 sm:px-5">
+            <div>
+              <h2 className="font-bold text-slate-900">Inventaire des produits</h2>
+              <p className="mt-1 text-sm text-slate-500">{products.length} référence(s) · {totalUnits.toLocaleString("fr-FR")} unité(s)</p>
+            </div>
+            {lowStockCount > 0 && <span className="badge border-0 bg-amber-100 text-amber-800">{lowStockCount} stock(s) bas</span>}
+          </div>
+          {products.length === 0 ? (
+            <p className="px-5 py-10 text-center text-sm text-slate-500">Aucun produit actif à afficher.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="table table-sm">
+                <thead><tr><th>Produit</th><th>Prix unitaire</th><th>Prix de gros</th><th>Stock</th><th>Valeur du stock</th></tr></thead>
+                <tbody>
+                  {products.map((product) => {
+                    const stock = Math.max(0, Number(product.stock) || 0);
+                    const currency = product.currency || "FC";
+                    return (
+                      <tr key={product.id}>
+                        <td className="min-w-48 font-medium">{product.title}</td>
+                        <td>{Number(product.price).toLocaleString("fr-FR")} {currency}</td>
+                        <td>{Number(product.wholesalePrice) > 0 ? `${Number(product.wholesalePrice).toLocaleString("fr-FR")} ${currency}` : "—"}</td>
+                        <td><span className={stock <= 3 ? "font-semibold text-amber-700" : ""}>{stock.toLocaleString("fr-FR")}</span></td>
+                        <td>{(Number(product.price) * stock).toLocaleString("fr-FR")} {currency}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      </main>
+    </div>
+  );
+}
+
+function DashboardMetric({ label, value, icon }: { label: string; value: string; icon: ReactNode }) {
+  return (
+    <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+      <div className="flex items-center gap-2 text-sm text-slate-500">{icon}<span>{label}</span></div>
+      <p className="mt-3 break-words text-2xl font-bold text-slate-900">{value}</p>
+    </article>
+  );
+}
+
+function BusinessSpaceAction({
+  icon,
+  title,
+  description,
+  onClick,
+}: {
+  icon: ReactNode;
+  title: string;
+  description: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group flex min-h-24 items-center gap-4 rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-blue-200 hover:shadow-md sm:p-5"
+    >
+      <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-blue-50 text-[#143ca8]">{icon}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block font-semibold text-slate-900">{title}</span>
+        <span className="mt-1 block text-sm leading-5 text-slate-500">{description}</span>
+      </span>
+      <ChevronRight size={18} className="shrink-0 text-slate-400 transition group-hover:translate-x-0.5 group-hover:text-[#143ca8]" />
+    </button>
+  );
+}
+
+function ProfilePanel({
+  user,
+  onClose,
+  onBusinessSpace,
+  onSellerDashboard,
+  onManageProducts,
+  onStockManagement,
+  onManageProfile,
+  onFavorites,
+  onConnections,
+  onSellerOrders,
+  onBusinessOrders,
   onPublish,
   onSignOut,
 }: {
   user: User;
   onClose: () => void;
+  onBusinessSpace: () => void;
+  onSellerDashboard: () => void;
   onManageProducts: () => void;
   onStockManagement: () => void;
   onManageProfile: () => void;
+  onFavorites: () => void;
+  onConnections: () => void;
   onSellerOrders: () => void;
+  onBusinessOrders: () => void;
   onPublish: () => void;
   onSignOut: () => void;
 }) {
+  const hasBusinessWorkspace = Boolean(
+    (["boutique", "magasin", "boutique_pro", "magasin_pro"].includes(user.accountType || "") || user.businessOwnerId)
+    && user.businessRole !== "delivery",
+  );
+
   return (
     <aside className="fixed right-4 top-20 z-50 w-72 rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
       <div className="flex items-center justify-between">
@@ -3077,9 +4425,25 @@ function ProfilePanel({
         </p>
       ) : (
         <>
-          <button onClick={onManageProducts} className="btn btn-outline mt-5 w-full justify-start">
-            <Package size={16} /> Gérer mes produits
-          </button>
+          {user.role === "seller"
+            && !(["boutique_pro", "magasin_pro"].includes(user.accountType || "") && hasBusinessWorkspace) && (
+            <button onClick={onSellerDashboard} className="btn btn-primary mt-5 w-full justify-start bg-[#143ca8]">
+              <BarChart3 size={16} /> Tableau de bord vendeur
+            </button>
+          )}
+          {hasBusinessWorkspace && (
+            <button onClick={onBusinessSpace} className="btn btn-outline mt-3 w-full justify-start">
+              {user.accountType === "magasin" || user.accountType === "magasin_pro"
+                ? <Warehouse size={16} />
+                : <Store size={16} />}
+              {getBusinessSpaceTitle(user.accountType, Boolean(user.businessOwnerId))}
+            </button>
+          )}
+          {user.accountType === "personal" && (
+            <button onClick={onManageProducts} className="btn btn-outline mt-5 w-full justify-start">
+              <Package size={16} /> Gérer mes produits
+            </button>
+          )}
           {user.role === "seller" && (user.accountType === "boutique" || user.accountType === "magasin") && (
             <button onClick={onStockManagement} className="btn btn-outline mt-3 w-full justify-start">
               <Package size={16} /> Gestion des stocks
@@ -3088,9 +4452,20 @@ function ProfilePanel({
           <button onClick={onManageProfile} className="btn btn-outline mt-3 w-full justify-start">
             <UserRound size={16} /> Gérer mon profil
           </button>
+          <button onClick={onFavorites} className="btn btn-outline mt-3 w-full justify-start">
+            <Heart size={16} /> Mes favoris
+          </button>
+          <button onClick={onConnections} className="btn btn-outline mt-3 w-full justify-start">
+            <UserRound size={16} /> Mes abonnés et abonnements
+          </button>
           {user.role === "seller" && (
             <button onClick={onSellerOrders} className="btn btn-outline mt-3 w-full justify-start">
               <ClipboardList size={16} /> Commandes reçues
+            </button>
+          )}
+          {(user.accountType === "boutique_pro" || user.accountType === "magasin_pro" || user.businessRole || user.businessOwnerId) && (
+            <button onClick={onBusinessOrders} className="btn btn-outline mt-3 w-full justify-start">
+              <ClipboardList size={16} /> Commandes professionnelles
             </button>
           )}
           {user.isVerified && <button onClick={onPublish} className="btn btn-primary mt-3 w-full justify-start bg-[#143ca8]">
@@ -3393,8 +4768,8 @@ function ManageProductsPage({
           {products.map((product) => (
             <article key={product.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
               <button type="button" onClick={() => onViewProduct(product)} className="block w-full text-left">
-                <div className="aspect-[4/3] bg-slate-100">
-                  {product.image ? <img src={product.image} alt={product.title} className="h-full w-full object-cover" /> : <div className="grid h-full place-items-center text-slate-400">Pas d’image</div>}
+                <div className="relative aspect-[4/3] bg-slate-100">
+                  {product.image ? <img src={product.image} alt={product.title} className="absolute inset-0 h-full w-full object-cover" /> : <div className="absolute inset-0 grid place-items-center text-slate-400">Pas d’image</div>}
                 </div>
                 <div className="p-4">
                   <div className="flex items-start justify-between gap-3">
@@ -3423,17 +4798,23 @@ function ManageProductsPage({
 
 function PriceDisplay({ product, compact = false, dense = false }: { product: Product; compact?: boolean; dense?: boolean }) {
   const hasDiscount = product.originalPrice !== null && product.originalPrice > product.price;
+  const hasWholesalePrice = product.realEstateType == null
+    && Number(product.wholesalePrice) > 0
+    && Number(product.wholesalePrice) < product.price;
   if (dense) {
     return (
-      <div className="mt-1.5 flex min-w-0 items-baseline gap-1.5 overflow-hidden whitespace-nowrap sm:mt-2 sm:gap-2">
-        <span className="shrink-0 text-[12px] font-black leading-5 text-[#143ca8] sm:text-lg">
-          {product.price.toLocaleString("fr-FR")} {product.currency}
-        </span>
-        {hasDiscount && (
-          <span className="min-w-0 truncate text-[10px] font-semibold leading-4 text-slate-400 line-through sm:text-sm">
-            {product.originalPrice!.toLocaleString("fr-FR")} {product.currency}
+      <div className="mt-1.5 min-w-0 sm:mt-2">
+        <div className="flex min-w-0 items-baseline gap-1.5 overflow-hidden whitespace-nowrap sm:gap-2">
+          <span className="shrink-0 text-[12px] font-black leading-5 text-[#143ca8] sm:text-lg">
+            {product.price.toLocaleString("fr-FR")} {product.currency}
           </span>
-        )}
+          {hasDiscount && (
+            <span className="min-w-0 truncate text-[10px] font-semibold leading-4 text-slate-400 line-through sm:text-sm">
+              {product.originalPrice!.toLocaleString("fr-FR")} {product.currency}
+            </span>
+          )}
+        </div>
+        {hasWholesalePrice && <p className="mt-0.5 text-[9px] font-bold leading-3 text-emerald-700 sm:text-xs">Gros dès 10 : {product.wholesalePrice!.toLocaleString("fr-FR")} {product.currency}</p>}
       </div>
     );
   }
@@ -3448,15 +4829,47 @@ function PriceDisplay({ product, compact = false, dense = false }: { product: Pr
         </span>
       )}
       {hasDiscount && <span className="badge badge-sm border-0 bg-orange-100 text-orange-700">Prix réduit</span>}
+      {hasWholesalePrice && (
+        <span className="basis-full text-xs font-semibold text-emerald-700">
+          Prix de gros à partir de 10 pièces : {product.wholesalePrice!.toLocaleString("fr-FR")} {product.currency} / pièce
+        </span>
+      )}
     </div>
   );
 }
 
-function ProductDetails({ product, isFavorite, onToggleFavorite, onAddToCart, onClose, sellerProducts, similarProducts, onSelectSellerProduct, onDownload, onLogin }: { product: Product; isFavorite: boolean; onToggleFavorite: () => void; onAddToCart: (variants: ProductVariant[]) => void; onClose: () => void; sellerProducts: Product[]; similarProducts: Product[]; onSelectSellerProduct: (product: Product) => void; onDownload: () => void; onLogin: () => void }) {
+function ProductAvailability({ product, compact = false }: { product: Product; compact?: boolean }) {
+  const isAvailable = product.status === "active" && (product.realEstateType != null || product.stock > 0);
+  return (
+    <div className={`mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 ${compact ? "text-[9px] sm:text-[10px]" : "text-xs"}`}>
+      {product.realEstateType ? (
+        <span className={`inline-flex items-center gap-1 font-medium ${isAvailable ? "text-emerald-700" : "text-rose-600"}`}>
+          <span className={`size-1.5 rounded-full ${isAvailable ? "bg-emerald-500" : "bg-rose-500"}`} />
+          {isAvailable ? "Annonce disponible" : "Indisponible"}
+        </span>
+      ) : (
+        <span className={`inline-flex items-center gap-1 font-medium ${isAvailable ? "text-emerald-700" : "text-rose-600"}`}>
+          <span className={`size-1.5 rounded-full ${isAvailable ? "bg-emerald-500" : "bg-rose-500"}`} />
+          {isAvailable ? "En stock" : "Indisponible"}
+        </span>
+      )}
+      {isAvailable && product.deliverySettings?.enabled && (
+        <span className="inline-flex items-center gap-1 font-medium text-slate-500">
+          <Truck size={compact ? 11 : 14} />
+          Livraison possible
+        </span>
+      )}
+    </div>
+  );
+}
+
+function ProductDetails({ product, isFavorite, onToggleFavorite, onAddToCart, onClose, sellerProducts, similarProducts, onSelectSellerProduct, onDownload, onLogin, onMessageSeller }: { product: Product; isFavorite: boolean; onToggleFavorite: () => void; onAddToCart: (variants: ProductVariant[]) => void; onClose: () => void; sellerProducts: Product[]; similarProducts: Product[]; onSelectSellerProduct: (product: Product) => void; onDownload: () => void; onLogin: () => void; onMessageSeller: () => void }) {
   const [isFollowing, setIsFollowing] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentUserIsAnonymous, setCurrentUserIsAnonymous] = useState(false);
   const [followBusy, setFollowBusy] = useState(false);
   const [notice, setNotice] = useState<{ title: string; message: string; variant: NoticeDialogVariant; requiresLogin?: boolean } | null>(null);
+  const [reportTarget, setReportTarget] = useState<"product" | "user" | null>(null);
   const [appDownloadPromptOpen, setAppDownloadPromptOpen] = useState(false);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [selectedSpecifications, setSelectedSpecifications] = useState<Record<string, string>>({});
@@ -3494,7 +4907,10 @@ function ProductDetails({ product, isFavorite, onToggleFavorite, onAddToCart, on
       }
       const { data: authData } = await supabase.auth.getUser();
       const currentUserId = authData.user?.id;
-      if (mounted) setCurrentUserId(currentUserId || null);
+      if (mounted) {
+        setCurrentUserId(currentUserId || null);
+        setCurrentUserIsAnonymous(Boolean(authData.user?.is_anonymous));
+      }
       if (!currentUserId || currentUserId === product.sellerId) {
         setIsFollowing(false);
         return;
@@ -3510,6 +4926,21 @@ function ProductDetails({ product, isFavorite, onToggleFavorite, onAddToCart, on
     void loadFollowState();
     return () => { mounted = false; };
   }, [product.sellerId]);
+
+  const openReportDialog = (target: "product" | "user") => {
+    if (!currentUserId || currentUserIsAnonymous) {
+      setNotice({
+        title: "Connexion requise",
+        message: target === "product"
+          ? "Connectez-vous pour signaler cette publication."
+          : "Connectez-vous pour signaler ce compte.",
+        variant: "info",
+        requiresLogin: true,
+      });
+      return;
+    }
+    setReportTarget(target);
+  };
 
   const toggleFollow = async () => {
     if (!supabase) return;
@@ -3581,9 +5012,9 @@ function ProductDetails({ product, isFavorite, onToggleFavorite, onAddToCart, on
         <div className="contents lg:col-start-1 lg:row-start-1 lg:block">
           <div className="relative aspect-[4/3] overflow-hidden rounded-2xl bg-slate-200 sm:aspect-[16/11] lg:rounded-3xl">
             {productImages.length ? (
-              <img src={productImages[activeImageIndex] || product.image} alt={product.title} decoding="async" className="h-full w-full object-contain sm:object-cover" />
+              <img src={productImages[activeImageIndex] || product.image} alt={product.title} decoding="async" className="absolute inset-0 h-full w-full object-contain sm:object-cover" />
             ) : (
-              <div className="grid h-full place-items-center text-slate-400"><Package size={48} /></div>
+              <div className="absolute inset-0 grid place-items-center text-slate-400"><Package size={48} /></div>
             )}
             {productImages.length > 1 && (
               <>
@@ -3617,10 +5048,10 @@ function ProductDetails({ product, isFavorite, onToggleFavorite, onAddToCart, on
                     onClick={() => onSelectSellerProduct(sellerProduct)}
                     className="overflow-hidden rounded-xl border border-slate-200 bg-white text-left shadow-sm transition hover:border-[#143ca8] hover:shadow"
                   >
-                    <div className="aspect-[4/3] bg-slate-100">
+                    <div className="relative aspect-[4/3] bg-slate-100">
                       {sellerProduct.image
-                        ? <img src={sellerProduct.image} alt={sellerProduct.title} loading="lazy" className="h-full w-full object-cover" />
-                        : <span className="grid h-full place-items-center text-slate-400"><Package size={22} /></span>}
+                        ? <img src={sellerProduct.image} alt={sellerProduct.title} loading="lazy" className="absolute inset-0 h-full w-full object-cover" />
+                        : <span className="absolute inset-0 grid place-items-center text-slate-400"><Package size={22} /></span>}
                     </div>
                     <div className="p-2">
                       <p className="line-clamp-2 text-xs font-semibold leading-4 text-slate-800">{sellerProduct.title}</p>
@@ -3652,10 +5083,10 @@ function ProductDetails({ product, isFavorite, onToggleFavorite, onAddToCart, on
                     onClick={() => onSelectSellerProduct(similarProduct)}
                     className="overflow-hidden rounded-xl border border-slate-200 bg-white text-left shadow-sm transition hover:border-[#143ca8] hover:shadow"
                   >
-                    <div className="aspect-[4/3] bg-slate-100">
+                    <div className="relative aspect-[4/3] bg-slate-100">
                       {similarProduct.image
-                        ? <img src={similarProduct.image} alt={similarProduct.title} loading="lazy" className="h-full w-full object-cover" />
-                        : <span className="grid h-full place-items-center text-slate-400"><Package size={22} /></span>}
+                        ? <img src={similarProduct.image} alt={similarProduct.title} loading="lazy" className="absolute inset-0 h-full w-full object-cover" />
+                        : <span className="absolute inset-0 grid place-items-center text-slate-400"><Package size={22} /></span>}
                     </div>
                     <div className="p-2">
                       <p className="line-clamp-2 text-xs font-semibold leading-4 text-slate-800">{similarProduct.title}</p>
@@ -3693,8 +5124,14 @@ function ProductDetails({ product, isFavorite, onToggleFavorite, onAddToCart, on
             </div>
             <PriceDisplay product={product} />
             {product.status !== "sold" && !product.realEstateType && (
-              <p className={`mt-2 text-sm font-medium ${product.stock > 0 ? "text-emerald-700" : "text-red-600"}`}>
-                {product.stock > 0 ? `En stock : ${product.stock} unité${product.stock === 1 ? "" : "s"}` : "Stock épuisé"}
+              <p className={`mt-2 text-sm font-medium ${product.status === "active" && product.stock > 0 ? "text-emerald-700" : "text-red-600"}`}>
+                {product.status === "active" && product.stock > 0 ? `En stock : ${product.stock} unité${product.stock === 1 ? "" : "s"}` : "Indisponible"}
+              </p>
+            )}
+            {product.status === "active" && product.deliverySettings?.enabled && (
+              <p className="mt-2 flex items-center gap-1.5 text-sm font-medium text-slate-600">
+                <Truck size={15} className="text-[#143ca8]" />
+                Livraison proposée ; le tarif dépend de votre zone.
               </p>
             )}
             {selectableSpecifications.length > 0 && (
@@ -3820,18 +5257,37 @@ function ProductDetails({ product, isFavorite, onToggleFavorite, onAddToCart, on
                   disabled={(!product.realEstateType && product.stock <= 0) || (selectableSpecifications.length > 0 && (!allOptionsSelected || totalSelectedQuantity <= 0 || totalSelectedQuantity > product.stock))}
                   className="btn min-h-11 flex-1 border-[#143ca8] bg-[#143ca8] text-white hover:bg-[#102f85] disabled:bg-slate-300"
                 >
-                  <ShoppingCart size={18} /> Ajouter au panier
+                  <ShoppingCart size={18} /> Commander
                 </button>
               )}
               {whatsappUrl && currentUserId !== product.sellerId && (
                 <a href={whatsappUrl} target="_blank" rel="noreferrer" className="btn min-h-11 flex-1 bg-[#25D366] text-white"><Phone size={17} /> WhatsApp</a>
               )}
+              {currentUserId !== product.sellerId && (
+                <button type="button" onClick={onMessageSeller} className="btn min-h-11 flex-1 border-[#143ca8] text-[#143ca8]">
+                  <MessageCircle size={17} /> Écrire au vendeur
+                </button>
+              )}
             </div>
+            {product.status === "active" && currentUserId !== product.sellerId && (
+              <p className="mt-2 text-xs leading-5 text-slate-500">
+                Vous pourrez vérifier le récapitulatif et les options de paiement disponibles avant d’envoyer la commande.
+              </p>
+            )}
           </section>
 
           <section className="order-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
             <h3 className="font-display text-lg font-bold">Description</h3>
             <p className="mt-1.5 whitespace-pre-line text-sm leading-5 text-slate-600">{product.description?.trim() || "Aucune description fournie par le vendeur."}</p>
+            {currentUserId !== product.sellerId && (
+              <button
+                type="button"
+                onClick={() => openReportDialog("product")}
+                className="btn btn-ghost btn-sm mt-3 min-h-9 text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+              >
+                <Flag size={15} /> Signaler cette publication
+              </button>
+            )}
           </section>
 
           {Object.entries(product.specifications ?? {}).filter(([, value]) => value.trim()).length > 0 && (
@@ -3868,6 +5324,15 @@ function ProductDetails({ product, isFavorite, onToggleFavorite, onAddToCart, on
                 {product.sellerUsername && <p className="mt-0.5 text-xs text-slate-500">@{product.sellerUsername.replace(/^@/, "")}</p>}
                 {product.sellerAddress && <p className="mt-1 flex items-start gap-1 text-sm text-slate-500"><MapPin className="mt-0.5 shrink-0" size={14} />{product.sellerAddress}</p>}
                 {product.sellerBio && <p className="mt-1 whitespace-pre-line text-sm leading-5 text-slate-600">{product.sellerBio}</p>}
+                {currentUserId !== product.sellerId && (
+                  <button
+                    type="button"
+                    onClick={() => openReportDialog("user")}
+                    className="btn btn-ghost btn-xs mt-2 min-h-8 text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                  >
+                    <Flag size={13} /> Signaler ce compte
+                  </button>
+                )}
               </div>
             </div>
           </section>
@@ -3889,6 +5354,16 @@ function ProductDetails({ product, isFavorite, onToggleFavorite, onAddToCart, on
           variant={notice.variant}
           onLogin={notice.requiresLogin ? onLogin : undefined}
           onClose={() => setNotice(null)}
+        />
+      )}
+      {reportTarget && (
+        <ReportDialog
+          targetId={reportTarget === "product" ? product.id : product.sellerId}
+          targetType={reportTarget}
+          title={reportTarget === "product" ? "Signaler cette publication" : "Signaler ce compte"}
+          reasons={reportTarget === "product" ? PRODUCT_REPORT_REASONS : USER_REPORT_REASONS}
+          onClose={() => setReportTarget(null)}
+          onLogin={onLogin}
         />
       )}
       {appDownloadPromptOpen && (

@@ -154,7 +154,7 @@ export default function StockManagementPage({ userId, onClose }: Props) {
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-9">
+      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-9">
         <p className="mb-5 text-sm text-slate-600">Suivez les quantités disponibles et réapprovisionnez vos produits.</p>
         <div className="grid grid-cols-3 gap-2 sm:gap-4">
           <Summary value={products.length} label="Références" />
@@ -174,20 +174,20 @@ export default function StockManagementPage({ userId, onClose }: Props) {
             <p className="mt-1 text-sm text-slate-500">Publiez un produit pour commencer à gérer votre stock.</p>
           </div>
         ) : (
-          <div className="mt-6 space-y-3">
+          <div className="mt-6 grid grid-cols-1 gap-3 lg:grid-cols-2 lg:gap-4 xl:grid-cols-3">
             {products.map((product) => {
               const stock = Math.max(0, Number(product.stock) || 0);
               const isSold = product.status === "sold";
               const isLow = stock <= 3 && !isSold;
               const image = imageFrom(product.images);
               return (
-                <article key={product.id} className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="flex min-w-0 flex-1 items-center gap-3">
+                <article key={product.id} className="h-full rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+                  <div className="flex items-center gap-3 lg:items-start">
+                    <div className="flex min-w-0 flex-1 items-center gap-3 lg:flex-col lg:items-stretch">
                       {image ? (
-                        <img src={image} alt="" className="h-14 w-14 shrink-0 rounded-xl bg-slate-100 object-cover" />
+                        <img src={image} alt="" className="h-14 w-14 shrink-0 rounded-xl bg-slate-100 object-cover lg:h-44 lg:w-full" />
                       ) : (
-                        <span className="grid h-14 w-14 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-400"><Package size={22} /></span>
+                        <span className="grid h-14 w-14 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-400 lg:h-44 lg:w-full"><Package size={22} /></span>
                       )}
                       <span className="min-w-0 flex-1">
                         <span className="block truncate font-semibold">{product.title || "Produit sans titre"}</span>

@@ -7,6 +7,7 @@ import {
   PackageCheck,
   Phone,
   RefreshCw,
+  ArrowRight,
   X,
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
@@ -57,6 +58,7 @@ type BuyerProfile = {
 type Props = {
   user: User;
   onClose: () => void;
+  onOpenBusinessOrders: () => void;
 };
 
 const STATUS_LABELS: Record<SellerOrder["status"], string> = {
@@ -67,7 +69,7 @@ const STATUS_LABELS: Record<SellerOrder["status"], string> = {
   Cancelled: "Annulée",
 };
 
-export default function SellerOrdersPage({ user, onClose }: Props) {
+export default function SellerOrdersPage({ user, onClose, onOpenBusinessOrders }: Props) {
   const [orders, setOrders] = useState<SellerOrder[]>([]);
   const [buyers, setBuyers] = useState<Map<string, BuyerProfile>>(new Map());
   const [loading, setLoading] = useState(true);
@@ -122,7 +124,8 @@ export default function SellerOrdersPage({ user, onClose }: Props) {
   }, [user.id]);
 
   useEffect(() => {
-    void loadOrders();
+    const timer = window.setTimeout(() => { void loadOrders(); }, 0);
+    return () => window.clearTimeout(timer);
   }, [loadOrders]);
 
   const updateOrder = async (
@@ -316,9 +319,12 @@ export default function SellerOrdersPage({ user, onClose }: Props) {
               </div>
 
               {isBusinessOrder && (
-                <p className="mt-4 rounded-2xl bg-blue-50 p-3 text-sm text-blue-800">
-                  Cette commande suit le circuit professionnel de l’application et ne peut pas être traitée depuis ce panneau.
-                </p>
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-blue-50 p-3 text-sm text-blue-900">
+                  <p>Cette commande doit être traitée dans le circuit professionnel, avec ses étapes de validation et de livraison.</p>
+                  <button type="button" onClick={onOpenBusinessOrders} className="btn btn-sm border-blue-200 bg-white text-blue-900 hover:bg-blue-100">
+                    Ouvrir les commandes professionnelles <ArrowRight size={15} />
+                  </button>
+                </div>
               )}
               <div className="mt-4 flex flex-wrap gap-2">
                 {coordinatesAvailable && (

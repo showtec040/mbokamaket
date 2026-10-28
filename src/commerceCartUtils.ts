@@ -5,6 +5,11 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 export const isCommerceCartItem = (value: unknown): value is CommerceCartItem => {
   if (!isRecord(value) || !isRecord(value.product)) return false;
+  if (value.product.wholesalePrice !== undefined
+    && value.product.wholesalePrice !== null
+    && (typeof value.product.wholesalePrice !== "number"
+      || !Number.isFinite(value.product.wholesalePrice)
+      || value.product.wholesalePrice <= 0)) return false;
   if (value.selectedSpecifications !== undefined
     && (!isRecord(value.selectedSpecifications)
       || Object.values(value.selectedSpecifications).some((selection) => typeof selection !== "string"))) return false;
