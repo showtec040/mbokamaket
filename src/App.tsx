@@ -60,6 +60,7 @@ import SearchAlerts from "./SearchAlerts";
 import AccountConnectionsPage from "./AccountConnectionsPage";
 import SellerDeliverySettingsPage from "./SellerDeliverySettingsPage";
 import { normalizeSearchCity, searchCityLabel } from "./searchCity";
+import { usePopShow } from "./PopShow";
 import appIcon from "./assets/icon.png";
 import kambexaLogo from "./assets/kambexa.png";
 import { pageSeo, productPath, productSlug, Seo } from "./seo";
@@ -205,6 +206,11 @@ type User = {
   phone?: string;
   address?: string;
 };
+const canPublish = (user?: User | null) => Boolean(
+  user && (user.isVerified || (
+    !user.isAnonymous && user.role === "seller" && user.accountType === "personal"
+  )),
+);
 type ProductSort = "recent" | "price_asc" | "price_desc" | "popular" | "relevance";
 type ProductVariant = { selectedSpecifications: Record<string, string>; quantity: number };
 const multiChoiceSpecificationLabels = new Set(["Tailles disponibles", "Pointures disponibles", "Couleurs disponibles"]);
@@ -332,9 +338,7 @@ type Row = {
 };
 
 const PRODUCT_IMAGES_BUCKET = "product-images";
-const DEFAULT_APK_URL = "https://www.dropbox.com/scl/fi/lvzealitvask4b3u4tvtp/MbokaMaket-v1.0.0.apk?rlkey=kp3w06kbnkkjbd5jlpw6f9p9r&st=h61yo0k8&dl=0";
 const isMobileBrowser = () => /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || "");
-const isAndroidBrowser = () => /Android/i.test(navigator.userAgent || "");
 const getAppDeepLinkUrl = (path: string, params?: Record<string, string | undefined>) => {
   const url = new URL("mbokamaket://" + path.replace(/^\/+/, ""));
   Object.entries(params || {}).forEach(([key, value]) => {
@@ -595,6 +599,7 @@ const mapProduct = (row: Row): Product => ({
 });
 
 function App() {
+  const { confirm } = usePopShow();
   const location = useLocation();
   const navigate = useNavigate();
   const [products, setProducts] = useState<Product[]>([]);
@@ -662,16 +667,10 @@ function App() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [mobileCategoriesOpen, setMobileCategoriesOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
-  const [installOpen, setInstallOpen] = useState(false);
-  const [nativeAppAvailable, setNativeAppAvailable] = useState(false);
-  const [nativeAppCheckComplete, setNativeAppCheckComplete] = useState(false);
-  const [nativeAppOpening, setNativeAppOpening] = useState(false);
-  const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [desktopInstallOpen, setDesktopInstallOpen] = useState(false);
   const [desktopAppInstalled, setDesktopAppInstalled] = useState(() => window.matchMedia("(display-mode: standalone)").matches);
   const [desktopInstallError, setDesktopInstallError] = useState("");
   const [visitorCount, setVisitorCount] = useState<number | null>(null);
-  const [apkDownloadCount, setApkDownloadCount] = useState<number | null>(null);
   const [legalPage, setLegalPage] = useState<"conditions" | "confidentialite" | null>(null);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
   const mobileSearchRef = useRef<HTMLLabelElement>(null);
@@ -696,23 +695,11 @@ function App() {
   const downloadPage = location.pathname.replace(/\/+$/, "") === "/telechargement";
   const playStore = import.meta.env.VITE_PLAY_STORE_URL as string | undefined;
   const appStore = import.meta.env.VITE_APP_STORE_URL as string | undefined;
-  const apk = (import.meta.env.VITE_APK_URL as string | undefined) || DEFAULT_APK_URL;
   const contactEmail = import.meta.env.VITE_CONTACT_EMAIL as string | undefined;
   const facebookUrl = import.meta.env.VITE_FACEBOOK_URL as string | undefined;
   const tiktokUrl = import.meta.env.VITE_TIKTOK_URL as string | undefined;
   const instagramUrl = import.meta.env.VITE_INSTAGRAM_URL as string | undefined;
   const youtubeUrl = import.meta.env.VITE_YOUTUBE_URL as string | undefined;
-  const apkDownloadUrl = apk?.replace(/[?&]dl=0(?:&|$)/, (match) => match.startsWith("?") ? "?dl=1" : "&dl=1");
-  const registerApkDownload = async () => {
-    setApkDownloadCount((current) => typeof current === "number" ? current + 1 : current);
-    if (!supabase) return;
-    const { error: insertError } = await supabase.from("apk_downloads").insert({});
-    if (insertError) return;
-    const { count } = await supabase
-      .from("apk_downloads")
-      .select("id", { count: "exact", head: true });
-    if (typeof count === "number") setApkDownloadCount(count);
-  };
   const toggleFavorite = async (productId: string) => {
     if (favoriteWritesRef.current.has(productId)) return;
     const isFavorite = favoriteIds.includes(productId);
@@ -822,13 +809,6 @@ function App() {
       }
     };
     void registerVisit();
-    const loadApkDownloads = async () => {
-      const { count } = await client
-        .from("apk_downloads")
-        .select("id", { count: "exact", head: true });
-      if (typeof count === "number") setApkDownloadCount(count);
-    };
-    void loadApkDownloads();
   }, []);
   useEffect(() => {
     const routeCategory = categoryRouteIds[location.pathname];
@@ -845,30 +825,26 @@ function App() {
     }
   }, [location.pathname]);
   useEffect(() => {
-    const isStandalone = window.matchMedia("(display-mode: standalone)").matches
-      || Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
-    const isAndroid = isAndroidBrowser();
-    if (!isStandalone && isAndroid) setInstallOpen(true);
-    if (!isAndroid) return;
-
-    const relatedAppsNavigator = navigator as Navigator & {
-      getInstalledRelatedApps?: () => Promise<Array<unknown>>;
-    };
-    if (!relatedAppsNavigator.getInstalledRelatedApps) return;
-    void relatedAppsNavigator.getInstalledRelatedApps().then((apps) => {
-      if (apps.length > 0) {
-        setNativeAppAvailable(true);
-      }
-    }).catch(() => undefined);
-  }, []);
-  useEffect(() => {
-    const handleBeforeInstallPrompt = (event: Event) => {
+    const handleBeforeInstallPrompt = async (event: Event) => {
       event.preventDefault();
-      setDeferredInstallPrompt(event as BeforeInstallPromptEvent);
+      const platform = (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform
+        || navigator.platform
+        || navigator.userAgent;
+      const isWindowsDesktop = /windows/i.test(platform)
+        && window.matchMedia("(min-width: 640px) and (pointer: fine)").matches;
+      if (!isWindowsDesktop || window.matchMedia("(display-mode: standalone)").matches) return;
+
+      try {
+        await (event as BeforeInstallPromptEvent).prompt();
+        await (event as BeforeInstallPromptEvent).userChoice;
+      } catch (installError) {
+        console.error("[pwa] impossible d’ouvrir le prompt d’installation", installError);
+        setDesktopInstallError("L’installation automatique n’a pas pu être lancée. Utilisez le menu du navigateur pour installer Mbokamarket.");
+        setDesktopInstallOpen(true);
+      }
     };
     const handleAppInstalled = () => {
       setDesktopAppInstalled(true);
-      setDeferredInstallPrompt(null);
       setDesktopInstallOpen(false);
     };
     window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
@@ -885,42 +861,6 @@ function App() {
     return /windows/i.test(platform)
       && window.matchMedia("(min-width: 640px) and (pointer: fine)").matches;
   })();
-  const installDesktopApp = async () => {
-    setDesktopInstallError("");
-    if (!deferredInstallPrompt) return;
-    const installPrompt = deferredInstallPrompt;
-    setDeferredInstallPrompt(null);
-    try {
-      await installPrompt.prompt();
-      await installPrompt.userChoice;
-    } catch (installError) {
-      console.error("[pwa] impossible d’ouvrir le prompt d’installation", installError);
-      setDesktopInstallError("L’installation n’a pas pu être lancée. Utilisez le menu du navigateur pour installer Mbokamarket.");
-    }
-  };
-  const openNativeApp = () => {
-    if (nativeAppOpening) return;
-    setNativeAppOpening(true);
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState !== "hidden") return;
-      window.clearTimeout(fallbackTimer);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      setNativeAppAvailable(true);
-      setNativeAppOpening(false);
-    };
-    const fallbackTimer = window.setTimeout(() => {
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      setNativeAppOpening(false);
-      if (document.visibilityState === "visible") {
-        setNativeAppAvailable(false);
-        setNativeAppCheckComplete(true);
-      }
-    }, 2000);
-
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    window.location.href = getAppDeepLinkUrl("/");
-  };
   const loadProducts = async () => {
     if (!supabase) return;
     setLoading(true);
@@ -1426,7 +1366,7 @@ function App() {
   );
   const heroProduct = advertisedProducts[heroProductIndex % Math.max(advertisedProducts.length, 1)];
   useEffect(() => {
-    setDesktopHeroProducts([...advertisedProducts].sort(() => Math.random() - 0.5).slice(0, 3));
+    setDesktopHeroProducts([...advertisedProducts].sort(() => Math.random() - 0.5).slice(0, 5));
   }, [advertisedProducts]);
   useEffect(() => {
     const mediaQuery = window.matchMedia("(max-width: 639px)");
@@ -1594,6 +1534,7 @@ function App() {
       currency: product.currency === "$" || product.currency.toUpperCase() === "USD" ? "USD" : "FC",
       image: product.image,
       sellerId: product.sellerId,
+      sellerPhone: product.phone,
       seller: product.seller,
       categoryId: product.categoryId,
       stock: product.stock,
@@ -1821,7 +1762,10 @@ function App() {
     window.location.hash = "mon-profil";
   };
   const deleteProduct = async (product: Product) => {
-    if (!supabase || !user || !window.confirm(`Supprimer l’annonce « ${product.title} » ?`)) return;
+    if (!supabase || !user || !await confirm(`Supprimer l’annonce « ${product.title} » ?`, {
+      confirmLabel: "Supprimer",
+      destructive: true,
+    })) return;
     const { error: deleteError } = await supabase.from("produits").delete().eq("id", product.id).eq("seller_profile_id", user.id);
     if (deleteError) {
       setError(deleteError.message);
@@ -1898,49 +1842,13 @@ function App() {
           </div>
           <button type="button" onClick={() => setDesktopInstallOpen(false)} className="btn btn-ghost btn-circle btn-sm" aria-label="Fermer">×</button>
         </div>
-        {deferredInstallPrompt ? (
-          <button type="button" onClick={() => void installDesktopApp()} className="btn mt-3 w-full rounded-xl bg-[#143ca8] text-white">
-            Installer l’application
-          </button>
-        ) : (
-          <div className="mt-3 rounded-xl bg-blue-50 p-3 text-sm leading-5 text-slate-700">
-            Dans Microsoft Edge, ouvrez le menu <strong>…</strong>, puis <strong>Applications → Installer ce site en tant qu’application</strong>.
-            Dans Google Chrome, ouvrez le menu <strong>⋮</strong>, puis <strong>Enregistrer et partager → Installer la page comme application</strong>.
-          </div>
-        )}
+        <div className="mt-3 rounded-xl bg-blue-50 p-3 text-sm leading-5 text-slate-700">
+          Dans Microsoft Edge, ouvrez le menu <strong>…</strong>, puis <strong>Applications → Installer ce site en tant qu’application</strong>.
+          Dans Google Chrome, ouvrez le menu <strong>⋮</strong>, puis <strong>Enregistrer et partager → Installer la page comme application</strong>.
+        </div>
         {desktopInstallError && <p role="alert" className="mt-2 text-sm text-red-600">{desktopInstallError}</p>}
       </aside>
     )}
-    {installOpen && (
-        <aside className="fixed inset-x-3 bottom-3 z-[90] rounded-2xl border border-blue-100 bg-white p-4 shadow-2xl shadow-[#143ca8]/20 sm:inset-x-auto sm:right-6 sm:w-96" aria-label="Installation de Mbokamarket RDC">
-          <div className="flex items-start gap-3">
-            <img src={appIcon} alt="" className="size-12 rounded-xl object-contain" />
-            <div className="min-w-0 flex-1">
-              <h2 className="font-bold text-slate-900">{nativeAppAvailable ? "Ouvrir dans l’application" : nativeAppCheckComplete ? "Télécharger Mbokamarket RDC" : "Mbokamarket RDC sur Android"}</h2>
-              <p className="mt-1 text-sm text-slate-500">{nativeAppAvailable ? "L’application semble déjà installée sur ce téléphone." : nativeAppOpening ? "Tentative d’ouverture de l’application..." : nativeAppCheckComplete ? "L’application ne s’est pas ouverte. Téléchargez l’APK ; Android vous demandera de confirmer l’installation et, selon vos réglages, d’autoriser cette source." : "Essayez d’ouvrir l’application. Si elle n’est pas installée, son téléchargement vous sera proposé."}</p>
-            </div>
-            <button type="button" onClick={() => setInstallOpen(false)} className="btn btn-ghost btn-circle btn-sm" aria-label="Fermer">×</button>
-          </div>
-          {nativeAppAvailable || !nativeAppCheckComplete ? (
-            <button type="button" onClick={openNativeApp} disabled={nativeAppOpening} className="btn mt-3 w-full rounded-xl bg-[#143ca8] text-white">
-              {nativeAppOpening ? "Ouverture..." : nativeAppAvailable ? "Ouvrir l’application" : "Essayer d’ouvrir l’application"}
-            </button>
-          ) : (
-            <a
-              href={apkDownloadUrl}
-              download="Mbokamaket-v1.0.0.apk"
-              type="application/vnd.android.package-archive"
-              onClick={registerApkDownload}
-              className="btn mt-3 w-full rounded-xl bg-[#143ca8] text-white"
-            >
-              Télécharger l’APK Android
-            </a>
-          )}
-          <button type="button" onClick={() => setInstallOpen(false)} className="mt-2 w-full text-xs text-slate-400 hover:text-slate-600">
-            Rester sur le site
-          </button>
-        </aside>
-      )}
       {loading && (
         <main className="fixed inset-0 z-[100] grid place-items-center bg-[#143ca8] px-6 text-white md:hidden" aria-busy="true" aria-label="Chargement de Mbokamarket RDC">
           <div className="flex flex-col items-center text-center">
@@ -1951,7 +1859,7 @@ function App() {
         </main>
       )}
       <header className={profileManagementOpen ? "hidden" : "sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur"}>
-        <div className="mx-auto flex max-w-7xl items-center gap-2 px-3 py-3 sm:gap-4 sm:px-6">
+        <div className="mx-auto flex max-w-[1800px] items-center gap-2 px-3 py-3 sm:gap-4 sm:px-6">
           <button
             className="btn btn-ghost btn-square md:hidden"
             onClick={() => setMobileOpen(!mobileOpen)}
@@ -1971,7 +1879,7 @@ function App() {
             </span>
           </a>
           <div className="ml-auto flex shrink-0 items-center gap-0 md:hidden">
-            {user?.isVerified && (
+            {canPublish(user) && (
               <button
                 onClick={() => { setMobileOpen(false); setPublishOpen(true); window.location.hash = "publier"; }}
                 className="btn btn-ghost btn-square"
@@ -2097,18 +2005,20 @@ function App() {
             >
               <UserRound size={20} />
             </button>
-            {isWindowsDesktop && !desktopAppInstalled ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setDesktopInstallError("");
-                  setDesktopInstallOpen(true);
-                }}
-                className="btn btn-primary ml-1 whitespace-nowrap rounded-xl bg-[#143ca8]"
-              >
-                <Laptop size={17} />
-                Installer sur Windows
-              </button>
+            {isWindowsDesktop ? (
+              canPublish(user) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPublishOpen(true);
+                    window.location.hash = "publier";
+                  }}
+                  className="btn btn-primary ml-1 whitespace-nowrap rounded-xl bg-[#143ca8]"
+                >
+                  <Plus size={17} />
+                  Publier
+                </button>
+              )
             ) : (
               <a href="/telechargement" onClick={(event) => { event.preventDefault(); openDownload(); }} className="btn btn-primary ml-1 whitespace-nowrap rounded-xl bg-[#143ca8]">
                 Télécharger l’application
@@ -2276,8 +2186,13 @@ function App() {
             )}
           </div>
         )}
+        <div className="border-t border-slate-100 px-3 py-1.5 sm:hidden">
+          <p className="mx-auto max-w-[1800px] text-center text-[10px] font-semibold tracking-wide text-slate-500">
+            Somba teka na mboka nayo
+          </p>
+        </div>
       </header>
-      {!commerceMode && (
+      {!commerceMode && (cartItemCount > 0 || canPublish(user)) && (
         <div
           className="fixed right-4 z-[80] flex items-center gap-1.5 md:hidden"
           style={{ bottom: "max(1rem, env(safe-area-inset-bottom))" }}
@@ -2288,23 +2203,33 @@ function App() {
               <ChevronRight size={18} className="animate-pulse" aria-hidden="true" />
             </div>
           )}
-        <button
-          type="button"
-          onClick={openCart}
-          className="btn btn-circle size-12 min-h-12 border-0 bg-[#143ca8] p-0 text-white shadow-xl shadow-[#143ca8]/30"
-          aria-label={`Ouvrir le panier${cartItemCount ? `, ${cartItemCount} article(s)` : ""}`}
-        >
-          <ShoppingCart size={20} />
-          {cartItemCount > 0 && (
-            <span className="badge badge-sm absolute -right-1 -top-1 border-0 bg-white text-[#143ca8]">
-              {cartItemCount > 99 ? "99+" : cartItemCount}
-            </span>
-          )}
-        </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (cartItemCount > 0) {
+                openCart();
+                return;
+              }
+              setMobileOpen(false);
+              setPublishOpen(true);
+              window.location.hash = "publier";
+            }}
+            className="btn btn-circle size-12 min-h-12 border-0 bg-[#143ca8] p-0 text-white shadow-xl shadow-[#143ca8]/30"
+            aria-label={cartItemCount > 0
+              ? `Ouvrir le panier, ${cartItemCount} article(s)`
+              : "Publier une annonce"}
+          >
+            {cartItemCount > 0 ? <ShoppingCart size={20} /> : <Plus size={22} />}
+            {cartItemCount > 0 && (
+              <span className="badge badge-sm absolute -right-1 -top-1 border-0 bg-white text-[#143ca8]">
+                {cartItemCount > 99 ? "99+" : cartItemCount}
+              </span>
+            )}
+          </button>
         </div>
       )}
-      <main id="accueil" className={profileManagementOpen ? "min-h-screen bg-[#f6f8fc] px-4 py-6 sm:px-6 sm:py-10" : "mx-auto max-w-7xl px-4 pb-12 sm:px-6 sm:pb-16"}>
-        {publishOpen && user?.isVerified && (
+      <main id="accueil" className={profileManagementOpen ? "min-h-screen bg-[#f6f8fc] px-4 py-6 sm:px-6 sm:py-10" : "mx-auto max-w-[1800px] px-4 pb-12 sm:px-6 sm:pb-16"}>
+        {publishOpen && canPublish(user) && user && (
           <PublishModal
             user={user}
             onClose={() => { setPublishOpen(false); window.location.hash = "accueil"; }}
@@ -2504,38 +2429,35 @@ function App() {
             </div>
           </nav>
         )}
-        <section className={`${downloadPage || showProducts || noticeOpen || selectedProduct || publishOpen ? "hidden" : ""} hero-panel relative isolate mt-4 overflow-hidden rounded-[2rem] bg-[#143ca8] text-white shadow-2xl shadow-[#143ca8]/15 sm:mt-6`}>
+        <section className={`${downloadPage || showProducts || noticeOpen || selectedProduct || publishOpen ? "hidden" : ""} hero-panel relative isolate mt-3 overflow-hidden rounded-3xl border border-blue-100 bg-gradient-to-br from-white via-blue-50 to-indigo-100 shadow-lg shadow-blue-900/10 sm:mt-4`}>
           <div
-            className="hero-ad-panel relative flex min-h-[18rem] cursor-pointer flex-col justify-between overflow-hidden bg-[#f5f8ff] p-3 text-slate-900 sm:min-h-[30rem] sm:p-8 lg:min-h-[19rem] lg:p-5"
+            className="hero-ad-panel relative flex min-h-0 cursor-pointer flex-col gap-3 overflow-hidden p-3 text-slate-900 sm:gap-4 sm:p-4 lg:p-5"
             onClick={openProducts}
             aria-label="Afficher tous les produits"
               onMouseEnter={() => setHeroPaused(true)}
               onMouseLeave={() => setHeroPaused(false)}
           >
-              <div className="flex justify-end">
-                <button type="button" onClick={openProducts} className="btn btn-sm rounded-xl bg-[#143ca8] text-white shadow-sm hover:bg-[#102f85]">
-                  Découvrez nos produits <Search size={15} />
-                </button>
-              </div>
               {!isMobileViewport && desktopHeroProducts.length > 0 ? (
                 <>
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#143ca8]">À la une</p>
-                      <p className="mt-1 text-sm text-slate-500">Découvrez nos annonces sélectionnées</p>
+                      <p className="mt-0.5 text-xs text-slate-500 sm:text-sm">Découvrez nos annonces sélectionnées</p>
                     </div>
-                    <span className="rounded-full bg-[#dbe5ff] px-3 py-1 text-xs font-bold text-[#143ca8]">Sélection aléatoire</span>
+                    <button type="button" onClick={openProducts} className="btn btn-sm min-h-9 shrink-0 rounded-xl border-0 bg-[#143ca8] px-3 text-white shadow-sm hover:bg-[#102f85]">
+                      Voir tout <Search size={15} />
+                    </button>
                   </div>
-                  <div className="mt-4 grid flex-1 grid-cols-3 gap-3">
+                  <div className="grid grid-cols-2 items-start gap-2.5 sm:grid-cols-3 sm:gap-3 lg:grid-cols-5">
                     {desktopHeroProducts.map((product) => (
-                      <button key={product.id} type="button" onClick={(event) => { event.stopPropagation(); openProduct(product); }} className="group flex min-w-0 flex-col overflow-hidden rounded-xl bg-white text-left shadow-md transition hover:-translate-y-1 hover:shadow-lg" aria-label={`Voir le produit ${product.title}`}>
-                        <div className="relative aspect-[16/9] bg-slate-100">
+                      <button key={product.id} type="button" onClick={(event) => { event.stopPropagation(); openProduct(product); }} className="group flex min-w-0 flex-col overflow-hidden rounded-2xl border border-white/80 bg-white/90 text-left shadow-sm transition duration-200 hover:-translate-y-1 hover:shadow-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#143ca8]" aria-label={`Voir le produit ${product.title}`}>
+                        <div className="relative aspect-[16/10] w-full overflow-hidden bg-slate-100">
                           {product.image ? <img src={product.image} alt={product.title} loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover transition duration-500 group-hover:scale-105" /> : <div className="absolute inset-0 grid place-items-center text-xs text-slate-400">Pas d’image</div>}
-                          {(product.featured || product.promoted) && <span className="badge absolute left-2 top-2 border-0 bg-orange-400 text-[10px] text-white">Sponsorisé</span>}
+                          {(product.featured || product.promoted) && <span className="badge badge-sm absolute left-2 top-2 border-0 bg-orange-400 text-[9px] text-white shadow-sm">À la une</span>}
                         </div>
-                        <div className="min-w-0 p-3">
-                          <h2 className="truncate text-sm font-bold">{product.title}</h2>
-                          <PriceDisplay product={product} compact />
+                        <div className="min-w-0 p-2.5 sm:p-3">
+                          <h2 className="line-clamp-2 min-h-9 text-xs font-bold leading-4 sm:text-sm sm:leading-5">{product.title}</h2>
+                          <PriceDisplay product={product} compact dense />
                           <span className="mt-1 flex items-center gap-1 truncate text-[11px] text-slate-500"><MapPin size={12} />{product.location}</span>
                         </div>
                       </button>
@@ -2545,21 +2467,24 @@ function App() {
               ) : isMobileViewport && heroProduct ? (
                 <>
                   <div className="flex items-center justify-between gap-3">
-                    <div>
+                    <div className="min-w-0 flex-1">
                       <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#143ca8]">À la une</p>
-                      <p className="mt-1 text-sm text-slate-500">Découvrez une annonce près de chez vous</p>
+                      <p className="mt-0.5 text-xs text-slate-500">Découvrez une annonce près de chez vous</p>
                     </div>
-                    <span className="max-w-[40%] truncate rounded-full bg-[#dbe5ff] px-2.5 py-1 text-[10px] font-bold text-[#143ca8] sm:max-w-none sm:px-3 sm:text-xs">{heroProduct.category}</span>
+                    <button type="button" onClick={openProducts} className="btn btn-sm min-h-9 shrink-0 rounded-xl border-0 bg-[#143ca8] px-3 text-white shadow-sm hover:bg-[#102f85]">
+                      Voir tout <Search size={14} />
+                    </button>
                   </div>
                   <button
                     type="button"
                     onClick={(event) => { event.stopPropagation(); openProduct(heroProduct); }}
-                    className="group mt-3 flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl bg-white text-left shadow-lg transition hover:-translate-y-1 hover:shadow-xl sm:mt-5 sm:rounded-2xl"
+                    className="group flex min-h-0 flex-col overflow-hidden rounded-2xl border border-white/80 bg-white/95 text-left shadow-md transition hover:shadow-lg sm:rounded-3xl"
                     aria-label={`Voir le produit ${heroProduct.title}`}
                   >
-                    <div className="relative aspect-[16/5] flex-none bg-slate-100 sm:aspect-[16/7]">
+                    <div className="relative aspect-[16/8] flex-none overflow-hidden bg-slate-100 sm:aspect-[16/7]">
                       {heroProduct.image ? <img src={heroProduct.image} alt={heroProduct.title} loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover transition duration-500 group-hover:scale-105" /> : <div className="absolute inset-0 grid place-items-center text-slate-400">Pas d’image</div>}
                       {(heroProduct.featured || heroProduct.promoted) && <span className="badge absolute left-3 top-3 border-0 bg-orange-400 text-white">Annonce sponsorisée</span>}
+                      <span className="absolute right-3 top-3 max-w-[50%] truncate rounded-full bg-white/90 px-2.5 py-1 text-[10px] font-bold text-[#143ca8] shadow-sm">{heroProduct.category}</span>
                     </div>
                     <div className="p-3 sm:p-4">
                       <h2 className="line-clamp-1 text-base font-bold sm:text-lg">{heroProduct.title}</h2>
@@ -2570,7 +2495,7 @@ function App() {
                       </div>
                     </div>
                   </button>
-                  {isMobileViewport && <div className="mt-2 flex items-center justify-between sm:mt-4">
+                  {isMobileViewport && <div className="flex items-center justify-between">
                     <div className="flex gap-1.5" aria-label="Position dans les annonces">
                       {advertisedProducts.map((item, index) => <button key={item.id} type="button" onClick={(event) => { event.stopPropagation(); setHeroProductIndex(index); }} aria-label={`Afficher ${item.title}`} className={`h-2 rounded-full transition-all ${index === heroProductIndex % advertisedProducts.length ? "w-7 bg-[#143ca8]" : "w-2 bg-slate-300"}`} />)}
                     </div>
@@ -2597,7 +2522,7 @@ function App() {
                 <LoaderCircle className="animate-spin text-[#143ca8]" />
               </div>
             ) : homeProducts.length > 0 ? (
-              <div className="mt-5 grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-4">
+              <div className="mt-5 grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-4 xl:grid-cols-4 2xl:grid-cols-5">
                 {visibleHomeProducts.map((item) => (
                   <article
                     key={item.id}
@@ -2947,7 +2872,7 @@ function App() {
               Aucune annonce trouvée.
             </div>
           ) : (
-            <div className="mt-5 grid grid-cols-2 gap-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
+            <div className="mt-5 grid grid-cols-2 gap-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
               {visibleProducts.map((item) => (
                 <article
                   key={item.id}
@@ -3155,7 +3080,7 @@ function App() {
                 Retrouvez toutes les fonctionnalités de l’application sur votre
                 téléphone.
               </p>
-              <div className="mt-4 grid gap-2.5 sm:mt-7 sm:gap-4 md:grid-cols-3">
+              <div className="mt-4 grid gap-2.5 sm:mt-7 sm:gap-4 md:grid-cols-2">
                 <DownloadCard
                   icon={AppStoreLogo}
                   title="App Store"
@@ -3167,15 +3092,6 @@ function App() {
                   title="Google Play"
                   subtitle="Pour Android"
                   href={playStore}
-                />
-                <DownloadCard
-                  icon={ApkLogo}
-                  title="APK Android"
-                  subtitle="Installation directe"
-                  href={apkDownloadUrl}
-                  download
-                  onDownload={registerApkDownload}
-                  downloadCount={apkDownloadCount}
                 />
               </div>
             </section>
@@ -3352,7 +3268,7 @@ function FavoritesPage({
           <ChevronLeft size={18} /> Retour
         </button>
       </header>
-      <main className="mx-auto max-w-7xl px-3 py-5 sm:px-6 sm:py-8">
+      <main className="mx-auto max-w-[1800px] px-3 py-5 sm:px-6 sm:py-8">
         {loading ? (
           <div className="flex justify-center py-16"><LoaderCircle className="animate-spin text-[#143ca8]" /></div>
         ) : products.length === 0 ? (
@@ -3413,30 +3329,16 @@ function GooglePlayLogo({ size = 24, className = "" }: { size?: number; classNam
   );
 }
 
-function ApkLogo({ size = 24, className = "" }: { size?: number; className?: string }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" className={className} aria-hidden="true">
-      <path fill="currentColor" d="M7.25 9.2 5.8 6.7a.7.7 0 1 1 1.2-.7l1.48 2.56A8.2 8.2 0 0 1 12 7.6c1.25 0 2.44.35 3.52.96L17 6a.7.7 0 1 1 1.2.7l-1.45 2.5a6.1 6.1 0 0 1 2.8 5.1v.7H4.45v-.7a6.1 6.1 0 0 1 2.8-5.1ZM9 12.7a.8.8 0 1 0 0-1.6.8.8 0 0 0 0 1.6Zm6 0a.8.8 0 1 0 0-1.6.8.8 0 0 0 0 1.6ZM4.55 16.4h14.9v1.15a1.5 1.5 0 0 1-1.5 1.5h-.6v1.65a.8.8 0 1 1-1.6 0v-1.65h-7.3v1.65a.8.8 0 1 1-1.6 0v-1.65h-.8a1.5 1.5 0 0 1-1.5-1.5V16.4Z" />
-    </svg>
-  );
-}
-
 function DownloadCard({
   icon: Icon,
   title,
   subtitle,
   href,
-  download = false,
-  onDownload,
-  downloadCount,
 }: {
   icon: Icon;
   title: string;
   subtitle: string;
   href?: string;
-  download?: boolean;
-  onDownload?: () => void;
-  downloadCount?: number | null;
 }) {
   return (
     <div className="download-card flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 transition hover:-translate-y-1 hover:shadow-lg sm:gap-4 sm:rounded-2xl sm:p-5">
@@ -3452,20 +3354,12 @@ function DownloadCard({
         <div className="flex shrink-0 flex-col items-end gap-1">
           <a
             href={href}
-            target={download ? "_self" : "_blank"}
-            rel={download ? undefined : "noopener noreferrer"}
-            download={download ? "Mbokamaket-v1.0.0.apk" : undefined}
-            type={download ? "application/vnd.android.package-archive" : undefined}
-            onClick={download ? onDownload : undefined}
+            target="_blank"
+            rel="noopener noreferrer"
             className="btn btn-xs min-h-8 rounded-lg bg-[#143ca8] px-2.5 text-xs text-white sm:btn-sm sm:px-4 sm:text-sm"
           >
-            {download ? "Télécharger" : "Ouvrir"}
+            Ouvrir
           </a>
-          {download && typeof downloadCount === "number" && (
-            <span className="text-[10px] text-slate-400">
-              {downloadCount.toLocaleString("fr-FR")} téléchargements
-            </span>
-          )}
         </div>
       ) : (
         <span className="text-xs text-slate-400">Bientôt</span>
@@ -3525,7 +3419,7 @@ function Footer({
 
   return (
     <footer className="border-t border-[#0b1e55] bg-[#102a68] text-white">
-      <div className="mx-auto grid max-w-7xl gap-8 px-4 py-8 sm:px-6 md:grid-cols-[1fr_1.15fr_1fr] md:gap-12 md:py-12">
+      <div className="mx-auto grid max-w-[1800px] gap-8 px-4 py-8 sm:px-6 md:grid-cols-[1fr_1.15fr_1fr] md:gap-12 md:py-12">
         <div>
           <div className="flex items-center gap-3"><img src={appIcon} alt="Logo Mbokamarket RDC" loading="lazy" decoding="async" className="size-11 rounded-xl" /><strong className="font-display text-xl">Mbokamarket RDC</strong></div>
           <p className="mt-4 max-w-xs text-sm leading-6 text-blue-100">Somba teka na mboka nayo.</p>
@@ -4157,7 +4051,7 @@ function BusinessSpacePage({
               onClick={onBusinessOrders}
             />
           )}
-          {user.isVerified && (
+          {canPublish(user) && (
             <BusinessSpaceAction
               icon={<Plus size={20} />}
               title="Publier une annonce"
@@ -4283,7 +4177,7 @@ function SellerDashboardPage({
           {hasStockManagement && <BusinessSpaceAction icon={<Truck size={20} />} title="Paramètres de livraison" description="Définir les frais de base et les tarifs par commune." onClick={onDeliverySettings} />}
           <BusinessSpaceAction icon={<ClipboardList size={20} />} title="Commandes reçues" description="Suivre les commandes de vos produits." onClick={onSellerOrders} />
           {hasBusinessOrders && <BusinessSpaceAction icon={<ClipboardList size={20} />} title="Commandes professionnelles" description="Traiter les étapes de commande de l’entreprise." onClick={onBusinessOrders} />}
-          {user.isVerified && <BusinessSpaceAction icon={<Plus size={20} />} title="Publier une annonce" description="Ajouter un produit ou un service au catalogue." onClick={onPublish} />}
+          {canPublish(user) && <BusinessSpaceAction icon={<Plus size={20} />} title="Publier une annonce" description="Ajouter un produit ou un service au catalogue." onClick={onPublish} />}
         </section>
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-4 sm:px-5">
@@ -4468,7 +4362,7 @@ function ProfilePanel({
               <ClipboardList size={16} /> Commandes professionnelles
             </button>
           )}
-          {user.isVerified && <button onClick={onPublish} className="btn btn-primary mt-3 w-full justify-start bg-[#143ca8]">
+          {canPublish(user) && <button onClick={onPublish} className="btn btn-primary mt-3 w-full justify-start bg-[#143ca8]">
             <Plus size={16} /> Publier une annonce
           </button>}
         </>

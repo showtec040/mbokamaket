@@ -1,8 +1,6 @@
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://ryxrnpomqxkhggelduwj.supabase.co';
 const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_wm4Fn_mr5UQnyKKlbtYhiA_PXjfODqz';
 const SITE_URL = 'https://www.mbokamaket.com';
-const APK_URL = (process.env.VITE_APK_URL || 'https://www.dropbox.com/scl/fi/lvzealitvask4b3u4tvtp/MbokaMaket-v1.0.0.apk?rlkey=kp3w06kbnkkjbd5jlpw6f9p9r&st=h61yo0k8&dl=0')
-  .replace(/[?&]dl=0(?:&|$)/, (match) => match.startsWith('?') ? '?dl=1' : '&dl=1');
 
 const escapeHtml = (value) => String(value ?? '')
   .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
@@ -32,7 +30,7 @@ const productIdFromSlug = (value) => {
   const uuidMatch = decodedValue.match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i);
   return uuidMatch?.[1] || '';
 };
-const shareActions = (appUrl, siteUrl) => `<div class="actions"><a class="button app-open" href="${escapeHtml(appUrl)}">Ouvrir dans l’application</a><a class="button secondary" href="${escapeHtml(siteUrl)}">Voir sur le site</a><div class="app-fallback" hidden aria-live="polite"><p class="warning">L’application ne s’est pas ouverte. Téléchargez l’APK ; Android vous demandera de confirmer l’installation et, selon vos réglages, d’autoriser cette source.</p><a class="button" href="${escapeHtml(APK_URL)}" download="Mbokamaket-v1.0.0.apk" type="application/vnd.android.package-archive">Télécharger l’APK Android</a></div></div>`;
+const shareActions = (appUrl, siteUrl) => `<div class="actions"><a class="button" href="${escapeHtml(appUrl)}">Ouvrir dans l’application</a><a class="button secondary" href="${escapeHtml(siteUrl)}">Voir sur le site</a></div>`;
 
 const querySupabase = async (table, id, columns) => {
   try {
@@ -91,9 +89,6 @@ const render = ({ title, description, image, canonical, content, type = 'website
     .actions{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
     .button{display:inline-block;margin:18px 0 0;padding:12px 17px;border-radius:9px;background:#2563eb;color:#fff;text-decoration:none;font-weight:700}
     .secondary{background:#e8eefb;color:#1d4ed8}
-    .warning{color:#8a3412;line-height:1.5;margin:18px 0 0}
-    .app-fallback{flex-basis:100%}
-    .app-fallback[hidden]{display:none}
     @media(max-width:560px){
       .page{padding:14px 12px}
       .card{border-radius:18px}
@@ -102,9 +97,8 @@ const render = ({ title, description, image, canonical, content, type = 'website
       .title{font-size:clamp(25px,7vw,32px)}
       .actions{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;margin-top:20px}
       .button{width:100%;margin:0;padding:14px 16px;text-align:center}
-      .app-fallback .button{margin-top:12px}
     }
-    </style></head><body><main class="page"><section class="card">${content}</section></main><script>(()=>{document.querySelectorAll('.app-open').forEach((link)=>{link.addEventListener('click',(event)=>{event.preventDefault();const fallback=link.parentElement.querySelector('.app-fallback');let wasHidden=false;const onVisibilityChange=()=>{if(document.visibilityState==='hidden'){wasHidden=true;return}if(wasHidden){fallback.hidden=false;document.removeEventListener('visibilitychange',onVisibilityChange)}};document.addEventListener('visibilitychange',onVisibilityChange);window.location.href=link.href;window.setTimeout(()=>{if(document.visibilityState==='visible'){fallback.hidden=false;document.removeEventListener('visibilitychange',onVisibilityChange)}},2000)})})})()</script></body></html>`;
+    </style></head><body><main class="page"><section class="card">${content}</section></main></body></html>`;
 };
 
 const sendHtml = (response, statusCode, html) => {

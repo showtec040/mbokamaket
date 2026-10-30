@@ -11,6 +11,7 @@ import {
   X,
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
+import { usePopShow } from "./PopShow";
 
 type User = {
   id: string;
@@ -30,7 +31,7 @@ type SellerOrderItem = {
 
 type SellerOrder = {
   id: string;
-  buyer_id: string;
+  buyer_id: string | null;
   buyer_name?: string | null;
   items: SellerOrderItem[];
   total: number | string;
@@ -70,6 +71,7 @@ const STATUS_LABELS: Record<SellerOrder["status"], string> = {
 };
 
 export default function SellerOrdersPage({ user, onClose, onOpenBusinessOrders }: Props) {
+  const { confirm } = usePopShow();
   const [orders, setOrders] = useState<SellerOrder[]>([]);
   const [buyers, setBuyers] = useState<Map<string, BuyerProfile>>(new Map());
   const [loading, setLoading] = useState(true);
@@ -99,7 +101,9 @@ export default function SellerOrdersPage({ user, onClose, onOpenBusinessOrders }
 
       const rows = (data ?? []) as SellerOrder[];
       setOrders(rows);
-      const buyerIds = Array.from(new Set(rows.map((order) => order.buyer_id).filter(Boolean)));
+      const buyerIds = Array.from(new Set(rows
+        .map((order) => order.buyer_id)
+        .filter((buyerId): buyerId is string => Boolean(buyerId))));
       if (buyerIds.length > 0) {
         try {
           const { data: profileRows, error: profilesError } = await supabase
@@ -140,7 +144,10 @@ export default function SellerOrdersPage({ user, onClose, onOpenBusinessOrders }
     const actionText = operation === "confirm"
       ? isSimpleRetail ? "confirmer la disponibilité" : "confirmer le paiement"
       : operation === "reject" ? "refuser cette commande" : "marquer cette commande comme livrée";
-    if (!window.confirm(`Voulez-vous ${actionText} ${order.tracking_code || order.id} ?`)) return;
+    if (!await confirm(`Voulez-vous ${actionText} ${order.tracking_code || order.id} ?`, {
+      confirmLabel: operation === "reject" ? "Refuser" : "Confirmer",
+      destructive: operation === "reject",
+    })) return;
 
     const values = operation === "confirm"
       ? isSimpleRetail
@@ -200,41 +207,46 @@ export default function SellerOrdersPage({ user, onClose, onOpenBusinessOrders }
           : operation === "confirm"
             ? `La disponibilité de votre commande ${order.tracking_code || order.id} a été confirmée.`
             : `La commande ${order.tracking_code || order.id} a été marquée comme livrée.`;
-      let persistNotification = true;
-      if (paid || operation === "reject") {
-        try {
-          const { error: notificationError } = await supabase.from("notifications").insert({
-            user_id: order.buyer_id,
-            title: notificationTitle,
-            message: notificationMessage,
-            type: notificationType,
-            data: { route: "OrderHistory", orderId: order.id },
-            event_id: `${notificationType.toLowerCase()}:${order.id}`,
-          });
-          if (notificationError) throw notificationError;
-          persistNotification = false;
-        } catch (notificationError) {
-          console.error("[seller-orders] enregistrement de la notification acheteur échoué", notificationError);
+      const buyerId = order.buyer_id;
+      if (!buyerId) {
+        setNotice("La commande est conservée, mais le compte invité a été supprimé : aucune notification ne peut lui être envoyée.");
+      } else {
+        let persistNotification = true;
+        if (paid || operation === "reject") {
+          try {
+            const { error: notificationError } = await supabase.from("notifications").insert({
+              user_id: buyerId,
+              title: notificationTitle,
+              message: notificationMessage,
+              type: notificationType,
+              data: { route: "OrderHistory", orderId: order.id },
+              event_id: `${notificationType.toLowerCase()}:${order.id}`,
+            });
+            if (notificationError) throw notificationError;
+            persistNotification = false;
+          } catch (notificationError) {
+            console.error("[seller-orders] enregistrement de la notification acheteur échoué", notificationError);
+          }
         }
-      }
 
-      try {
-        const { error: pushError } = await supabase.functions.invoke("send-push-notification", {
-          body: {
-            user_id: order.buyer_id,
-            title: notificationTitle,
-            body: notificationMessage,
-            tag: notificationType.toLowerCase(),
-            persist_notification: persistNotification,
-            notification_type: notificationType,
-            event_id: `${notificationType.toLowerCase()}:${order.id}`,
-            data: { route: "OrderHistory", orderId: order.id },
-          },
-        });
-        if (pushError) throw pushError;
-      } catch (notificationError) {
-        console.error("[seller-orders] mise à jour faite, notification acheteur échouée", notificationError);
-        setNotice("La commande a été mise à jour, mais l’acheteur n’a pas pu être notifié.");
+        try {
+          const { error: pushError } = await supabase.functions.invoke("send-push-notification", {
+            body: {
+              user_id: buyerId,
+              title: notificationTitle,
+              body: notificationMessage,
+              tag: notificationType.toLowerCase(),
+              persist_notification: persistNotification,
+              notification_type: notificationType,
+              event_id: `${notificationType.toLowerCase()}:${order.id}`,
+              data: { route: "OrderHistory", orderId: order.id },
+            },
+          });
+          if (pushError) throw pushError;
+        } catch (notificationError) {
+          console.error("[seller-orders] mise à jour faite, notification acheteur échouée", notificationError);
+          setNotice("La commande a été mise à jour, mais l’acheteur n’a pas pu être notifié.");
+        }
       }
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Impossible de mettre à jour cette commande.");
@@ -273,7 +285,7 @@ export default function SellerOrdersPage({ user, onClose, onOpenBusinessOrders }
             <h2 className="mt-4 font-bold">Aucune commande reçue</h2>
           </section>
         ) : orders.map((order) => {
-          const buyer = buyers.get(order.buyer_id);
+          const buyer = order.buyer_id ? buyers.get(order.buyer_id) : undefined;
           const items = Array.isArray(order.items) ? order.items : [];
           const total = Number(order.total) || 0;
           const currency = order.payment_currency || items[0]?.product?.currency || "FC";

@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, ArrowLeft, LoaderCircle, Package, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { supabase } from "./lib/supabase";
+import { usePopShow } from "./PopShow";
 
 type StockProduct = {
   id: string;
@@ -32,6 +33,7 @@ const imageFrom = (images: unknown) => {
 };
 
 export default function StockManagementPage({ userId, onClose }: Props) {
+  const { confirm } = usePopShow();
   const [products, setProducts] = useState<StockProduct[]>([]);
   const [quantities, setQuantities] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -108,7 +110,10 @@ export default function StockManagementPage({ userId, onClose }: Props) {
 
   const removeProduct = async (product: StockProduct) => {
     if (!supabase || workingProductId) return;
-    if (!window.confirm(`Supprimer définitivement « ${product.title} » ?`)) return;
+    if (!await confirm(`Supprimer définitivement « ${product.title} » ?`, {
+      confirmLabel: "Supprimer",
+      destructive: true,
+    })) return;
 
     setWorkingProductId(product.id);
     setError("");

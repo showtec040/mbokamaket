@@ -60,6 +60,7 @@ test('renders metadata and preview for product slugs ending in a UUID', async ()
   assert.match(response.body, /og:title/);
   assert.match(response.body, /Robe très élégante pour le dame/);
   assert.match(response.body, new RegExp(`mbokamaket://product/robe-tres-elegante-pour-le-dame-${productId}`));
+  assert.doesNotMatch(response.body, /APK Android|Mbokamaket-v1\.0\.0\.apk|app-fallback/);
 });
 
 test('renders metadata and preview for profile usernames', async () => {
@@ -72,4 +73,5 @@ test('renders metadata and preview for profile usernames', async () => {
   assert.match(response.body, /og:title/);
   assert.match(response.body, /B Mboutique/);
   assert.match(response.body, /mbokamaket:\/\/profile\/bmboutique/);
+  assert.doesNotMatch(response.body, /APK Android|Mbokamaket-v1\.0\.0\.apk|app-fallback/);
 });

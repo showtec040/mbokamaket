@@ -8,15 +8,18 @@ import {
   ClipboardList,
   LoaderCircle,
   MapPin,
+  MessageCircle,
   Package,
   RefreshCw,
   ShoppingCart,
+  Smartphone,
   Trash2,
   Truck,
   X,
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
 import { getCommerceCartItemKey } from "./commerceCartUtils";
+import { usePopShow } from "./PopShow";
 import {
   getCartItemUnitPrice,
   getCartProductQuantity,
@@ -33,6 +36,7 @@ type DeliverySettings = {
   zoneFees?: Record<string, number>;
 };
 type PaymentCondition = "delivery_or_pickup" | "prepaid";
+type OrderMethod = "app" | "whatsapp";
 type SellerPaymentSettings = {
   enabled?: boolean;
   operator?: string;
@@ -53,6 +57,7 @@ export type CommerceProduct = {
   currency: string;
   image: string;
   sellerId: string;
+  sellerPhone?: string;
   seller: string;
   categoryId: string;
   stock?: number;
@@ -77,7 +82,7 @@ type CommerceUser = {
 
 type CommerceOrder = {
   id: string;
-  buyer_id: string;
+  buyer_id: string | null;
   seller_id: string;
   items: CommerceCartItem[];
   total: number;
@@ -128,6 +133,13 @@ const getDeliveryFee = (
 const formatAmount = (amount: number, currency: string) =>
   `${amount.toLocaleString("fr-FR")} ${currency}`;
 
+const normalizeWhatsAppNumber = (value?: string | null): string => {
+  const digits = String(value || "").replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.startsWith("243")) return digits;
+  return `243${digits.replace(/^0/, "")}`;
+};
+
 const groupCartItems = (items: CommerceCartItem[]) => {
   const groups = new Map<string, CommerceCartItem[]>();
   for (const item of items) {
@@ -167,6 +179,7 @@ export default function CommercePage({
   onRequestLogin,
   onOrderCreated,
 }: Props) {
+  const { confirm } = usePopShow();
   const [screenState, setScreenState] = useState<{ view: Props["view"]; screen: "cart" | "checkout" | "orders" }>(() => ({ view, screen: view }));
   const screen = screenState.view === view ? screenState.screen : view;
   const setScreen = (nextScreen: "cart" | "checkout" | "orders") => setScreenState({ view, screen: nextScreen });
@@ -188,6 +201,7 @@ export default function CommercePage({
   const [prepaidPaymentDetails, setPrepaidPaymentDetails] = useState<PrepaidPaymentDetails>(null);
   const [paymentChoice, setPaymentChoice] = useState<"seller_condition" | "mobile_money" | null>(null);
   const [selectedPaymentCondition, setSelectedPaymentCondition] = useState<PaymentCondition | null>(null);
+  const [orderMethod, setOrderMethod] = useState<OrderMethod>("app");
   const [paymentProofFile, setPaymentProofFile] = useState<File | null>(null);
   const [paymentSettingsLoading, setPaymentSettingsLoading] = useState(false);
   const [paymentSettingsSellerId, setPaymentSettingsSellerId] = useState<string | null>(null);
@@ -229,8 +243,11 @@ export default function CommercePage({
   const effectivePaymentCondition = simpleRetailSeller
     ? selectedPaymentCondition === "prepaid" && businessPrepaidAvailable ? "prepaid" : "delivery_or_pickup"
     : selectedPaymentCondition;
-  const requiresPaymentProof = effectivePaymentChoice === "mobile_money"
-    || (effectivePaymentChoice === "seller_condition" && effectivePaymentCondition === "prepaid");
+  const requiresPaymentProof = orderMethod === "app" && (
+    effectivePaymentChoice === "mobile_money"
+    || (effectivePaymentChoice === "seller_condition" && effectivePaymentCondition === "prepaid")
+  );
+  const sellerWhatsApp = normalizeWhatsAppNumber(checkoutGroup?.items[0]?.product.sellerPhone ?? null);
 
   useEffect(() => {
     if (errorMessage && screen === "checkout") {
@@ -265,7 +282,7 @@ export default function CommercePage({
         const isBusiness = ["boutique", "magasin", "boutique_pro", "magasin_pro"].includes(accountType);
         let prepaidAvailable = false;
         let prepaidDetails: PrepaidPaymentDetails = null;
-        if (isBusiness) {
+        if (isBusiness && !guestCheckout) {
           const { data: availability, error: availabilityError } = await client.rpc("business_prepaid_available", {
             p_seller_id: checkoutGroup.sellerId,
           });
@@ -313,7 +330,7 @@ export default function CommercePage({
       active = false;
       window.clearTimeout(timer);
     };
-  }, [checkoutGroup, screen]);
+  }, [checkoutGroup, guestCheckout, screen]);
 
   useEffect(() => {
     if (screen !== "orders" || !activeBuyerId) return;
@@ -389,6 +406,7 @@ export default function CommercePage({
     setDeliveryCoordinates(null);
     setLocationError("");
     setErrorMessage("");
+    setOrderMethod("app");
     setScreen("checkout");
   };
 
@@ -417,7 +435,7 @@ export default function CommercePage({
   const submitOrder = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (busy) return;
-    if (!supabase) {
+    if (!supabase && orderMethod !== "whatsapp") {
       setErrorMessage("La configuration de la boutique n’est pas disponible.");
       return;
     }
@@ -443,41 +461,43 @@ export default function CommercePage({
       setErrorMessage("Indiquez un numéro de téléphone valide pour être contacté par le vendeur.");
       return;
     }
-    if (guestCheckout && !captchaSiteKey) {
-      setErrorMessage("La commande sans compte n’est pas encore activée. Connectez-vous pour continuer.");
-      return;
-    }
-    if (guestCheckout && !captchaToken) {
-      setErrorMessage("Confirmez la vérification de sécurité avant de commander.");
-      return;
-    }
-    if (checkoutPaymentSettingsLoading) {
-      setErrorMessage("Chargement des conditions de paiement du vendeur. Réessayez dans un instant.");
-      return;
-    }
-    if (paymentSettingsError) {
-      setErrorMessage(`Les conditions de paiement n’ont pas pu être vérifiées : ${paymentSettingsError}`);
-      return;
-    }
-    if (requiresBusinessVerification && !effectivePaymentChoice) {
-      setErrorMessage("Ce vendeur n’a pas configuré de condition de paiement utilisable pour cette commande. Contactez-le avant de commander.");
-      return;
-    }
-    if ((paymentConditions.length > 0 || mobileMoneyEnabled) && !effectivePaymentChoice) {
-      setErrorMessage("Choisissez une condition ou un moyen de paiement.");
-      return;
-    }
-    if (effectivePaymentChoice === "seller_condition" && !effectivePaymentCondition) {
-      setErrorMessage("Choisissez une condition de paiement proposée par le vendeur.");
-      return;
-    }
-    if (requiresPaymentProof && !paymentProofFile) {
-      setErrorMessage("Joignez la capture du paiement anticipé pour envoyer la commande.");
-      return;
-    }
-    if (requiresPaymentProof && guestCheckout) {
-      setErrorMessage("Connectez-vous pour joindre une preuve de paiement et commander.");
-      return;
+    if (orderMethod !== "whatsapp") {
+      if (guestCheckout && !captchaSiteKey) {
+        setErrorMessage("La commande sans compte n’est pas encore activée. Connectez-vous pour continuer.");
+        return;
+      }
+      if (guestCheckout && !captchaToken) {
+        setErrorMessage("Confirmez la vérification de sécurité avant de commander.");
+        return;
+      }
+      if (checkoutPaymentSettingsLoading) {
+        setErrorMessage("Chargement des conditions de paiement du vendeur. Réessayez dans un instant.");
+        return;
+      }
+      if (paymentSettingsError) {
+        setErrorMessage(`Les conditions de paiement n’ont pas pu être vérifiées : ${paymentSettingsError}`);
+        return;
+      }
+      if (requiresBusinessVerification && !effectivePaymentChoice) {
+        setErrorMessage("Ce vendeur n’a pas configuré de condition de paiement utilisable pour cette commande. Contactez-le avant de commander.");
+        return;
+      }
+      if ((paymentConditions.length > 0 || mobileMoneyEnabled) && !effectivePaymentChoice) {
+        setErrorMessage("Choisissez une condition ou un moyen de paiement.");
+        return;
+      }
+      if (effectivePaymentChoice === "seller_condition" && !effectivePaymentCondition) {
+        setErrorMessage("Choisissez une condition de paiement proposée par le vendeur.");
+        return;
+      }
+      if (requiresPaymentProof && !paymentProofFile) {
+        setErrorMessage("Joignez la capture du paiement anticipé pour envoyer la commande.");
+        return;
+      }
+      if (requiresPaymentProof && guestCheckout) {
+        setErrorMessage("Connectez-vous pour joindre une preuve de paiement et commander.");
+        return;
+      }
     }
     if (checkoutGroup.deliverySettings?.enabled) {
       if (!deliveryZone.trim() || !deliveryAddress.trim()) {
@@ -489,6 +509,46 @@ export default function CommercePage({
         setErrorMessage("Indiquez un numéro de téléphone valide pour la livraison.");
         return;
       }
+    }
+    if (orderMethod === "whatsapp") {
+      if (!sellerWhatsApp) {
+        setErrorMessage("Ce vendeur n’a pas de numéro WhatsApp disponible pour recevoir votre commande.");
+        return;
+      }
+      const message = [
+        `Bonjour ${checkoutGroup.seller}, je souhaite commander les articles suivants :`,
+        ...checkoutGroup.items.map((item) => {
+          const choices = selectedSpecificationsLabel(item.selectedSpecifications);
+          const unitPrice = getCartItemUnitPrice(item, checkoutGroup.items);
+          return `- ${item.quantity} × ${item.product.title}${choices ? ` (${choices})` : ""} — ${formatAmount(unitPrice, checkoutGroup.currency)} l’unité, soit ${formatAmount(unitPrice * item.quantity, checkoutGroup.currency)}`;
+        }),
+        "",
+        `Acheteur : ${guestName.trim() || user?.fullName?.trim() || "Non précisé"}`,
+        `Sous-total : ${formatAmount(checkoutGroup.subtotal, checkoutGroup.currency)}`,
+        `Frais de livraison estimés : ${formatAmount(deliveryFee, checkoutGroup.currency)}`,
+        `Total estimé : ${formatAmount(checkoutTotal, checkoutGroup.currency)}`,
+        `Lieu : ${deliveryZone || "Non précisé"}`,
+        `Adresse : ${deliveryAddress || "Non précisée"}`,
+        `Téléphone : ${buyerPhone || user?.phone || "Non précisé"}`,
+        ...(deliveryCoordinates
+          ? [`Position GPS : ${deliveryCoordinates.latitude}, ${deliveryCoordinates.longitude}`]
+          : []),
+        "",
+        "Merci de me confirmer la disponibilité, les modalités de livraison et de paiement.",
+      ].join("\n");
+      const whatsappUrl = `https://wa.me/${sellerWhatsApp}?text=${encodeURIComponent(message)}`;
+      const whatsappWindow = window.open(whatsappUrl, "_blank");
+      if (!whatsappWindow) {
+        setErrorMessage("WhatsApp n’a pas pu s’ouvrir. Autorisez les fenêtres contextuelles puis réessayez.");
+        return;
+      }
+      whatsappWindow.opener = null;
+      setNotificationNotice("Le message est préparé dans WhatsApp. Envoyez-le depuis WhatsApp pour transmettre votre demande au vendeur. Votre panier est conservé.");
+      return;
+    }
+    if (!supabase) {
+      setErrorMessage("La configuration de la boutique n’est pas disponible.");
+      return;
     }
     setBusy(true);
     try {
@@ -635,7 +695,10 @@ export default function CommercePage({
       setErrorMessage("La configuration de la boutique n’est pas disponible.");
       return;
     }
-    if (!window.confirm(`Annuler la commande ${order.tracking_code || order.id} ?`)) return;
+    if (!await confirm(`Annuler la commande ${order.tracking_code || order.id} ?`, {
+      confirmLabel: "Annuler la commande",
+      destructive: true,
+    })) return;
     setCancellingOrderId(order.id);
     setErrorMessage("");
     try {
@@ -791,6 +854,76 @@ export default function CommercePage({
         {screen === "checkout" && checkoutGroup && (
           <form noValidate onSubmit={(event) => void submitOrder(event)} className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
             <div className="space-y-5">
+              <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#143ca8]">Étape 1 · Votre choix</p>
+                <h2 className="mt-2 font-display text-xl font-bold text-slate-900">Comment souhaitez-vous commander ?</h2>
+                <p className="mt-1 text-sm leading-6 text-slate-500">
+                  Choisissez le parcours qui vous convient. Vous pourrez vérifier les détails avant de confirmer.
+                </p>
+                <div role="group" aria-label="Méthode de commande" className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    aria-pressed={orderMethod === "app"}
+                    onClick={() => setOrderMethod("app")}
+                    className={`group flex min-h-28 items-start gap-3 rounded-2xl border p-4 text-left transition ${
+                      orderMethod === "app"
+                        ? "border-[#143ca8] bg-blue-50 ring-2 ring-[#143ca8]/15"
+                        : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
+                    }`}
+                  >
+                    <span className={`grid size-11 shrink-0 place-items-center rounded-xl ${
+                      orderMethod === "app" ? "bg-[#143ca8] text-white" : "bg-slate-100 text-slate-600"
+                    }`}>
+                      <Smartphone size={21} />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-bold text-slate-900">Commander via Mbokamarket</span>
+                      <span className="mt-1 block text-xs leading-5 text-slate-500">
+                        Enregistrez la commande dans l’application et suivez son statut.
+                      </span>
+                    </span>
+                    <span className={`mt-1 grid size-5 shrink-0 place-items-center rounded-full border ${
+                      orderMethod === "app" ? "border-[#143ca8] bg-[#143ca8] text-white" : "border-slate-300"
+                    }`}>
+                      {orderMethod === "app" && <CheckCircle2 size={14} />}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={orderMethod === "whatsapp"}
+                    disabled={!sellerWhatsApp}
+                    onClick={() => setOrderMethod("whatsapp")}
+                    className={`group flex min-h-28 items-start gap-3 rounded-2xl border p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-55 ${
+                      orderMethod === "whatsapp"
+                        ? "border-emerald-600 bg-emerald-50 ring-2 ring-emerald-600/15"
+                        : "border-slate-200 bg-white hover:border-emerald-300 hover:bg-emerald-50/40"
+                    }`}
+                  >
+                    <span className={`grid size-11 shrink-0 place-items-center rounded-xl ${
+                      orderMethod === "whatsapp" ? "bg-emerald-600 text-white" : "bg-emerald-50 text-emerald-700"
+                    }`}>
+                      <MessageCircle size={21} />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-bold text-slate-900">Écrire au vendeur sur WhatsApp</span>
+                      <span className="mt-1 block text-xs leading-5 text-slate-500">
+                        Préparez le détail de votre demande et échangez directement avec lui.
+                      </span>
+                    </span>
+                    <span className={`mt-1 grid size-5 shrink-0 place-items-center rounded-full border ${
+                      orderMethod === "whatsapp" ? "border-emerald-600 bg-emerald-600 text-white" : "border-slate-300"
+                    }`}>
+                      {orderMethod === "whatsapp" && <CheckCircle2 size={14} />}
+                    </span>
+                  </button>
+                </div>
+                {!sellerWhatsApp && (
+                  <p role="status" className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
+                    WhatsApp n’est pas disponible pour ce vendeur. Vous pouvez toujours commander via Mbokamarket.
+                  </p>
+                )}
+              </section>
+
               <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
                 <h2 className="font-display text-lg font-bold">Résumé · {checkoutGroup.seller}</h2>
                 <div className="mt-4 divide-y divide-slate-100">
@@ -886,14 +1019,15 @@ export default function CommercePage({
                 </section>
               )}
 
-              <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-                <h2 className="font-display text-lg font-bold">Conditions de paiement</h2>
-                {checkoutPaymentSettingsLoading ? (
-                  <p role="status" className="mt-4 text-sm text-slate-500">Chargement des moyens de paiement…</p>
-                ) : paymentSettingsError ? (
-                  <p role="alert" className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">{paymentSettingsError}</p>
-                ) : (
-                  <>
+              {orderMethod === "app" && (
+                <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <h2 className="font-display text-lg font-bold">Conditions de paiement</h2>
+                  {checkoutPaymentSettingsLoading ? (
+                    <p role="status" className="mt-4 text-sm text-slate-500">Chargement des moyens de paiement…</p>
+                  ) : paymentSettingsError ? (
+                    <p role="alert" className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">{paymentSettingsError}</p>
+                  ) : (
+                    <>
                     {paymentConditions.map((condition) => (
                       <button
                         key={condition}
@@ -966,17 +1100,44 @@ export default function CommercePage({
                     )}
                   </>
                 )}
-              </section>
+                </section>
+              )}
+              {orderMethod === "whatsapp" && (
+                <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <h2 className="font-display text-lg font-bold">Détails à envoyer</h2>
+                  <p className="mt-2 text-sm leading-6 text-slate-500">
+                    Le vendeur recevra sur WhatsApp votre liste de produits, la zone de livraison, le contact et le montant estimé.
+                  </p>
+                  <div className="mt-4 rounded-2xl bg-slate-50 p-3 text-sm text-slate-700">
+                    <p className="font-semibold text-slate-800">Destinataire</p>
+                    <p className="mt-1">{checkoutGroup.seller}</p>
+                    {sellerWhatsApp && <p className="mt-1 text-[#143ca8]">WhatsApp : {sellerWhatsApp}</p>}
+                  </div>
+                </section>
+              )}
             </div>
 
             <aside className="h-fit rounded-3xl border border-slate-200 bg-white p-5 shadow-sm lg:sticky lg:top-24">
               <CheckCircle2 className="text-emerald-600" size={24} />
-              <h2 className="mt-3 font-display text-lg font-bold">Prêt à commander</h2>
-              <p className="mt-2 text-sm leading-6 text-slate-500">Le vendeur recevra votre commande et devra la confirmer. Les totaux et la disponibilité sont vérifiés par le serveur.</p>
-              <button type="submit" disabled={busy || checkoutPaymentSettingsLoading} className="btn btn-primary mt-5 w-full bg-[#143ca8]">
-                {busy ? "Envoi en cours..." : guestCheckout ? "Commander sans compte" : "Confirmer la commande"}
+              <h2 className="mt-3 font-display text-lg font-bold">
+                {orderMethod === "whatsapp" ? "Échange direct avec le vendeur" : "Commande dans Mbokamarket"}
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-slate-500">
+                {orderMethod === "whatsapp"
+                  ? "WhatsApp s’ouvrira avec le récapitulatif. Vous devrez envoyer le message pour transmettre votre demande."
+                  : "La commande sera enregistrée et le vendeur pourra la confirmer. Les totaux et le stock sont vérifiés."}
+              </p>
+              {orderMethod === "whatsapp" && (
+                <p className="mt-3 rounded-xl bg-emerald-50 p-3 text-xs leading-5 text-emerald-800">
+                  Votre panier ne sera pas vidé tant que vous n’aurez pas envoyé le message et finalisé votre échange avec le vendeur.
+                </p>
+              )}
+              <button type="submit" disabled={busy || (orderMethod === "app" && checkoutPaymentSettingsLoading)} className={`btn mt-5 w-full text-white ${
+                orderMethod === "whatsapp" ? "border-0 bg-emerald-600 hover:bg-emerald-700" : "btn-primary bg-[#143ca8]"
+              }`}>
+                {busy ? "Envoi en cours..." : orderMethod === "whatsapp" ? "Ouvrir WhatsApp avec ma commande" : guestCheckout ? "Commander sans compte" : "Confirmer la commande"}
               </button>
-              {guestCheckout && <button type="button" onClick={onRequestLogin} disabled={busy} className="btn btn-ghost mt-2 w-full">Se connecter plutôt</button>}
+              {guestCheckout && orderMethod === "app" && <button type="button" onClick={onRequestLogin} disabled={busy} className="btn btn-ghost mt-2 w-full">Se connecter plutôt</button>}
               <button type="button" onClick={() => setScreen("cart")} disabled={busy} className="btn btn-ghost mt-2 w-full">Retour au panier</button>
             </aside>
           </form>

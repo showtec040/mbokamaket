@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Check, ClipboardList, LoaderCircle, MapPin, PackageCheck, Phone, RefreshCw, Truck, X } from "lucide-react";
 import { supabase } from "./lib/supabase";
+import { usePopShow } from "./PopShow";
 
 type BusinessOrdersUser = {
   id: string;
@@ -22,7 +23,7 @@ type BusinessOrderItem = {
 
 type BusinessOrder = {
   id: string;
-  buyer_id: string;
+  buyer_id: string | null;
   buyer_name?: string | null;
   items: BusinessOrderItem[];
   total: number | string;
@@ -84,6 +85,7 @@ const getActionErrorMessage = (error: unknown, fallback: string) => {
 };
 
 export default function BusinessOrdersPage({ user, onClose }: Props) {
+  const { confirm } = usePopShow();
   const [orders, setOrders] = useState<BusinessOrder[]>([]);
   const [deliveryMembers, setDeliveryMembers] = useState<BusinessMember[]>([]);
   const [selectedDeliveryByOrder, setSelectedDeliveryByOrder] = useState<Record<string, string>>({});
@@ -200,7 +202,9 @@ export default function BusinessOrdersPage({ user, onClose }: Props) {
   }), [businessId, isManager, isOwner, orders, role, user.id]);
 
   const confirmBuyerPaymentAcceptance = async (order: BusinessOrder) => {
-    if (!window.confirm("Confirmez-vous avoir contacté l’acheteur et obtenu son accord sur le paiement à la livraison ?")) return;
+    if (!await confirm("Confirmez-vous avoir contacté l’acheteur et obtenu son accord sur le paiement à la livraison ?", {
+      confirmLabel: "Confirmer l’accord",
+    })) return;
     setWorkingOrderId(order.id);
     setErrorMessage("");
     setNotice("");
